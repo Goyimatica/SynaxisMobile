@@ -1,3 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <!-- highlights, notes, bookmarks and settings travel to a new phone -->
+    <include domain="file" path="synaxis.json" />
+    <include domain="sharedpref" path="synaxis_prefs.xml" />
+    <!-- the wiki cache does not: it is large, and it re-downloads -->
+    <exclude domain="file" path="docs/" />
+    <exclude domain="external" path="." />
 </full-backup-content>

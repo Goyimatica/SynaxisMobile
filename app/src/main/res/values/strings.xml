@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">SynaxisMobile</string>
+    <string name="app_name">Synaxis</string>
+    <string name="app_full_name">Synaxis — Lives of the Saints</string>
+
+    <string name="tab_today">Today</string>
+    <string name="tab_lives">Lives</string>
+    <string name="tab_calendar">Calendar</string>
+    <string name="tab_library">Library</string>
+    <string name="tab_search">Search</string>
+
+    <string name="cal_julian">Julian · Old Calendar</string>
+    <string name="cal_revised">Revised Julian · New Calendar</string>
 </resources>
