@@ -111,6 +111,11 @@ fun MarkSheet(
     val c = Syn.colors
     val sheetState = rememberModalBottomSheetState()
 
+    /* Store keeps the note nullable - an unannotated highlight has no note at
+       all rather than an empty one. Read it once, here, and the rest of the
+       sheet can treat it as ordinary text. */
+    val note = mark.note.orEmpty()
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -145,11 +150,11 @@ fun MarkSheet(
                 )
             }
 
-            if (mark.note.isNotBlank()) {
+            if (note.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
                 Text("YOUR NOTE", style = MaterialTheme.typography.labelSmall, color = c.faint)
                 Spacer(Modifier.height(7.dp))
-                Text(mark.note, style = MaterialTheme.typography.bodyMedium, color = c.dim)
+                Text(note, style = MaterialTheme.typography.bodyMedium, color = c.dim)
             }
 
             Spacer(Modifier.height(22.dp))
@@ -179,7 +184,7 @@ fun MarkSheet(
             ) {
                 SheetAction(
                     icon = { Icon(Icons.Outlined.EditNote, null, tint = c.text, modifier = Modifier.size(20.dp)) },
-                    label = if (mark.note.isBlank()) "Add a note" else "Edit the note",
+                    label = if (note.isBlank()) "Add a note" else "Edit the note",
                     modifier = Modifier.weight(1f),
                     onClick = onNote,
                 )
@@ -247,7 +252,7 @@ fun NoteDialog(
             Column {
                 if (quoted.isNotBlank()) {
                     Text(
-                        "“" + quoted.trim().take(140) + (if (quoted.trim().length > 140) "…" else "") + "”",
+                        "\u201C" + quoted.trim().take(140) + (if (quoted.trim().length > 140) "\u2026" else "") + "\u201D",
                         style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
                         color = c.faint,
                     )

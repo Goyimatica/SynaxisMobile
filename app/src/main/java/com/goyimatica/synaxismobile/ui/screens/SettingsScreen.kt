@@ -3,7 +3,6 @@ package com.goyimatica.synaxismobile.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -29,8 +28,10 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -77,8 +78,21 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     var syncing by remember { mutableStateOf(false) }
     var done by remember { mutableIntStateOf(0) }
+    var total by remember { mutableIntStateOf(0) }
     var confirmErase by remember { mutableStateOf(false) }
     var confirmClearCache by remember { mutableStateOf(false) }
+
+    /* WikiRepo counts the cache off the disk, so both of these suspend. A
+       composable body cannot suspend and must never block, so they are held as
+       state and refreshed whenever the cache could have changed. */
+    var haveCount by remember { mutableIntStateOf(0) }
+    var cacheKb by remember { mutableLongStateOf(0L) }
+    var refresh by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(refresh, syncing) {
+        haveCount = WikiRepo.downloaded()
+        cacheKb = WikiRepo.cacheBytes() / 1024L
+    }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(
@@ -119,7 +133,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "— St Seraphim of Sarov",
+                        "\u2014 St Seraphim of Sarov",
                         style = MaterialTheme.typography.bodySmall,
                         color = c.goldDim,
                     )
@@ -228,26 +242,31 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(7.dp))
                     Text(
                         if (syncing)
-                            "Fetching … " + done + " of " + SaintsRepo.count
+                            "Fetching \u2026 " + done + " of " +
+                                (if (total > 0) total else SaintsRepo.count)
                         else
-                            WikiRepo.downloaded().toString() + " of " + SaintsRepo.count +
-                                " lives are already downloaded · " +
-                                (WikiRepo.cacheBytes() / 1024L) + " KB",
+                            haveCount.toString() + " of " + SaintsRepo.count +
+                                " lives are already downloaded \u00B7 " + cacheKb + " KB",
                         style = MaterialTheme.typography.bodySmall,
                         color = c.dim,
                     )
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SynChip(
-                            text = if (syncing) "Working…" else "Sync everything",
+                            text = if (syncing) "Working\u2026" else "Sync everything",
                             selected = syncing,
                             onClick = {
                                 if (!syncing) {
                                     syncing = true
                                     done = 0
+                                    total = 0
                                     scope.launch {
-                                        WikiRepo.syncAll(SaintsRepo.all()) { n -> done = n }
+                                        WikiRepo.syncAll(SaintsRepo.all()) { n, all ->
+                                            done = n
+                                            total = all
+                                        }
                                         syncing = false
+                                        refresh++
                                     }
                                 }
                             },
@@ -274,8 +293,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        SaintsRepo.count.toString() + " lives · " + QuotesRepo.count +
-                            " sayings · " + Cal.count() + " commemorations",
+                        SaintsRepo.count.toString() + " lives \u00B7 " + QuotesRepo.count +
+                            " sayings \u00B7 " + Cal.count() + " commemorations",
                         style = MaterialTheme.typography.bodySmall,
                         color = c.dim,
                     )
@@ -312,7 +331,10 @@ fun SettingsScreen(onBack: () -> Unit) {
             },
             confirmButton = {
                 TextButton(onClick = {
-                    WikiRepo.clear()
+                    scope.launch {
+                        WikiRepo.clear()
+                        refresh++
+                    }
                     confirmClearCache = false
                 }) { Text("Clear", color = c.gold) }
             },
@@ -339,7 +361,10 @@ fun SettingsScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     Store.eraseEverything()
-                    WikiRepo.clear()
+                    scope.launch {
+                        WikiRepo.clear()
+                        refresh++
+                    }
                     confirmErase = false
                 }) { Text("Erase", color = c.blood) }
             },

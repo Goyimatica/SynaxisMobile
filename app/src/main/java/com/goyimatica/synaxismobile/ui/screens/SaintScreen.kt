@@ -51,12 +51,12 @@ import com.goyimatica.synaxismobile.data.WikiRepo
 import com.goyimatica.synaxismobile.ui.components.EmptyNote
 import com.goyimatica.synaxismobile.ui.components.SectionLabel
 import com.goyimatica.synaxismobile.ui.reader.MarkSheet
-import com.goyimatica.synaxismobile.ui.reader.hasFull
-import com.goyimatica.synaxismobile.ui.reader.newMarkKey
-import com.goyimatica.synaxismobile.ui.reader.words
 import com.goyimatica.synaxismobile.ui.reader.NoteDialog
 import com.goyimatica.synaxismobile.ui.reader.ReaderText
 import com.goyimatica.synaxismobile.ui.reader.SelectionState
+import com.goyimatica.synaxismobile.ui.reader.hasFull
+import com.goyimatica.synaxismobile.ui.reader.newMarkKey
+import com.goyimatica.synaxismobile.ui.reader.words
 import com.goyimatica.synaxismobile.ui.theme.Syn
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -176,7 +176,7 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                     saint.feastText().ifBlank { null },
                     saint.era.ifBlank { null },
                     saint.jurisdiction.ifBlank { null },
-                ).joinToString("  ·  "),
+                ).joinToString("  \u00B7  "),
                 style = MaterialTheme.typography.bodySmall,
                 color = c.faint,
             )
@@ -223,7 +223,7 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
             when {
                 loading && body.isBlank() -> {
                     Text(
-                        "Fetching the life…",
+                        "Fetching the life\u2026",
                         style = MaterialTheme.typography.bodyMedium,
                         color = c.faint,
                     )
@@ -281,8 +281,8 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
                 Text(
                     (if (d.fromOrthodoxWiki) "From OrthodoxWiki" else "From Wikipedia") +
-                        " · " + d.words + " words" +
-                        (if (marks.isNotEmpty()) " · " + marks.size + " highlighted" else ""),
+                        " \u00B7 " + d.words + " words" +
+                        (if (marks.isNotEmpty()) " \u00B7 " + marks.size + " highlighted" else ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = c.faint,
                 )
@@ -297,7 +297,9 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
     if (open != null) {
         MarkSheet(
             mark = open,
-            onRecolour = { code -> Store.editMark(saint.id, open.key, color = code, note = open.note) },
+            onRecolour = { code ->
+                Store.editMark(saint.id, open.key, color = code, note = open.note.orEmpty())
+            },
             onNote = {
                 noteKey = open.key
                 sheetKey = null
@@ -318,7 +320,7 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
     val noting = noteKey?.let { k -> marks.firstOrNull { it.key == k } }
     if (noting != null) {
         NoteDialog(
-            initial = noting.note,
+            initial = noting.note.orEmpty(),
             quoted = noting.text,
             onSave = { written ->
                 Store.editMark(saint.id, noting.key, color = noting.color, note = written)

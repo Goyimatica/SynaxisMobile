@@ -68,7 +68,7 @@ fun LibraryScreen(onOpenSaint: (String) -> Unit, onOpenSettings: () -> Unit) {
         SaintsRepo.all().flatMap { s -> library.marksFor(s.id).map { m -> s to m } }
             .sortedByDescending { it.second.at }
     }
-    val noted = remember(marked) { marked.filter { it.second.note.isNotBlank() } }
+    val noted = remember(marked) { marked.filter { !it.second.note.isNullOrBlank() } }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -95,8 +95,8 @@ fun LibraryScreen(onOpenSaint: (String) -> Unit, onOpenSettings: () -> Unit) {
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        saved.size.toString() + " saved · " + library.markCount +
-                            " highlights · " + library.noteCount + " notes",
+                        saved.size.toString() + " saved \u00B7 " + library.markCount +
+                            " highlights \u00B7 " + library.noteCount + " notes",
                         style = MaterialTheme.typography.bodyMedium,
                         color = c.dim,
                     )
@@ -186,6 +186,8 @@ fun LibraryScreen(onOpenSaint: (String) -> Unit, onOpenSettings: () -> Unit) {
 @Composable
 private fun MarkRow(saint: Saint, mark: Mark, onClick: () -> Unit) {
     val c = Syn.colors
+    val note = mark.note.orEmpty()
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -212,17 +214,17 @@ private fun MarkRow(saint: Saint, mark: Mark, onClick: () -> Unit) {
         }
         Spacer(Modifier.height(11.dp))
         Text(
-            "“" + mark.text.trim() + "”",
+            "\u201C" + mark.text.trim() + "\u201D",
             style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
             color = c.text,
         )
-        if (mark.note.isNotBlank()) {
+        if (note.isNotBlank()) {
             Spacer(Modifier.height(12.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.rule))
             Spacer(Modifier.height(12.dp))
             SectionLabel("Your note")
             Spacer(Modifier.height(6.dp))
-            Text(mark.note, style = MaterialTheme.typography.bodyMedium, color = c.dim)
+            Text(note, style = MaterialTheme.typography.bodyMedium, color = c.dim)
         }
     }
 }
