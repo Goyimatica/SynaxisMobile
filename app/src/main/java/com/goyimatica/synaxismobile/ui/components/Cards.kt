@@ -25,6 +25,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -111,7 +112,7 @@ fun SaintCard(
 @Composable
 fun ContinueCard(saint: Saint, progress: Float, onClick: () -> Unit) {
     val c = Syn.colors
-    val p = animFloat(progress.coerceIn(0f, 1f), Motion.spatial(), "progress")
+    val p by animFloat(progress.coerceIn(0f, 1f), Motion.spatial(), "progress")
     Pressable(onClick = onClick, modifier = Modifier.width(232.dp)) {
         Column(
             modifier = Modifier
@@ -157,7 +158,7 @@ fun ContinueCard(saint: Saint, progress: Float, onClick: () -> Unit) {
 @Composable
 fun QuoteCard(text: String, by: String, copied: Boolean, onCopy: () -> Unit) {
     val c = Syn.colors
-    val tint = animColor(if (copied) c.gold else c.faint, Motion.fade(), "copyTint")
+    val tint by animColor(if (copied) c.gold else c.faint, Motion.fade(), "copyTint")
     Column(
         modifier = Modifier
             .fillMaxWidth()

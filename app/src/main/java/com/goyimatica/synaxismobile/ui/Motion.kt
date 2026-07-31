@@ -13,8 +13,10 @@ import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -44,49 +46,58 @@ object Motion {
         tween(durationMillis = 150, easing = LinearOutSlowInEasing)
 }
 
-/* Settings → Animations: Full, Reduced, None. At None every wrapper below
-   snaps to its target, so "off" costs nothing rather than animating to zero. */
+/* Settings → Animations: Full, Reduced, None. */
 val animationsOn: Boolean
     @Composable get() = Syn.reading.animations > 0f
 
-private val scale: Float
+private val motionScale: Float
     @Composable get() = Syn.reading.animations.coerceIn(0f, 1f)
 
+/*
+ * These three return State, not a bare value, so every call site can use the
+ * delegate form:
+ *
+ *     val alpha by animFloat(if (open) 1f else 0f)
+ *
+ * With animations turned off they return a State that always holds the
+ * target, which snaps instantly and allocates nothing per frame.
+ */
 @Composable
 fun animFloat(
     target: Float,
     spec: AnimationSpec<Float> = Motion.quick(),
     label: String = "float",
-): Float =
-    if (!animationsOn) target
-    else animateFloatAsState(targetValue = target, animationSpec = spec, label = label).value
+): State<Float> =
+    if (!animationsOn) rememberUpdatedState(target)
+    else animateFloatAsState(targetValue = target, animationSpec = spec, label = label)
 
 @Composable
 fun animDp(
     target: Dp,
     spec: AnimationSpec<Dp> = Motion.size(),
     label: String = "dp",
-): Dp =
-    if (!animationsOn) target
-    else animateDpAsState(targetValue = target, animationSpec = spec, label = label).value
+): State<Dp> =
+    if (!animationsOn) rememberUpdatedState(target)
+    else animateDpAsState(targetValue = target, animationSpec = spec, label = label)
 
 @Composable
 fun animColor(
     target: Color,
     spec: AnimationSpec<Color> = Motion.fade(),
     label: String = "colour",
-): Color =
-    if (!animationsOn) target
-    else animateColorAsState(targetValue = target, animationSpec = spec, label = label).value
+): State<Color> =
+    if (!animationsOn) rememberUpdatedState(target)
+    else animateColorAsState(targetValue = target, animationSpec = spec, label = label)
 
 @Composable
 fun rememberInteraction(): MutableInteractionSource =
     remember { MutableInteractionSource() }
 
 /*
- * The press. Reads the interaction source, animates a scale, and applies it
- * in a graphicsLayer lambda - the lambda form, so the value is read during
- * the draw phase and a press never invalidates composition or layout.
+ * The press. The scale is read inside the graphicsLayer lambda, which means
+ * it is read during the draw phase - a press redraws one layer and never
+ * invalidates composition or layout. That is what keeps a list at full rate
+ * while something on it is being pressed.
  */
 @Composable
 fun Modifier.pressScale(
@@ -94,18 +105,15 @@ fun Modifier.pressScale(
     down: Float = 0.972f,
 ): Modifier {
     val pressed by interaction.collectIsPressedAsState()
-    val amount = 1f - ((1f - down) * scale)
-    val target = if (pressed) amount else 1f
-    val s = animFloat(target, Motion.quick(), "press")
+    val amount = 1f - ((1f - down) * motionScale)
+    val scale by animFloat(if (pressed) amount else 1f, Motion.quick(), "press")
     return this.graphicsLayer {
-        scaleX = s
-        scaleY = s
+        scaleX = scale
+        scaleY = scale
     }
 }
 
-/* A one-shot entrance for a card or a row: fades and lifts eight dp.
-   `index` staggers a list by twenty milliseconds a row, capped at six rows
-   so a long list never feels like it is loading in slow motion. */
+/* A one-shot entrance for a card or a row: fades and lifts eight dp. */
 @Composable
 fun Modifier.appearance(progress: Float): Modifier {
     val p = progress.coerceIn(0f, 1f)

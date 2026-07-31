@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -199,9 +200,9 @@ fun SynChip(
     modifier: Modifier = Modifier,
 ) {
     val c = Syn.colors
-    val bg = animColor(if (selected) c.gold else c.surface, Motion.fade(), "chipBg")
-    val fg = animColor(if (selected) c.bg else c.dim, Motion.fade(), "chipFg")
-    val edge = animColor(if (selected) c.gold else c.rule, Motion.fade(), "chipEdge")
+    val bg by animColor(if (selected) c.gold else c.surface, Motion.fade(), "chipBg")
+    val fg by animColor(if (selected) c.bg else c.dim, Motion.fade(), "chipFg")
+    val edge by animColor(if (selected) c.gold else c.rule, Motion.fade(), "chipEdge")
 
     Pressable(onClick = onClick, modifier = modifier, down = 0.94f) {
         Text(
