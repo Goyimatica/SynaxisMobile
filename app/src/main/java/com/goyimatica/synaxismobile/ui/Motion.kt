@@ -1,92 +1,116 @@
 package com.goyimatica.synaxismobile.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.unit.dp
 import com.goyimatica.synaxismobile.ui.theme.Syn
 
-/**
- * Four springs, and nothing else in the app is allowed to invent a fifth.
+/*
+ * Four specs, used everywhere, so the whole app moves with one hand.
  *
- * They are springs rather than durations on purpose: a spring can be given a
- * new target mid-flight and will carry its velocity into it, so a tap during
- * an animation never produces the little stutter a tween does.
+ *   quick    - a press, a tick, a colour. Critically damped, very stiff.
+ *   spatial  - anything that travels: a sheet, a row sliding in.
+ *   size     - anything that grows: the In Brief card opening.
+ *   fade     - opacity only, where a spring would look like a flicker.
  */
 object Motion {
+    fun <T> quick(): FiniteAnimationSpec<T> =
+        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 1600f)
 
-    /** Chips, presses, small colour changes. Quick, barely overshoots. */
-    fun <T> quick(): SpringSpec<T> =
-        spring(dampingRatio = 0.9f, stiffness = 900f)
+    fun <T> spatial(): FiniteAnimationSpec<T> =
+        spring(dampingRatio = 0.85f, stiffness = 380f)
 
-    /** Cards moving, sheets sliding, the calendar grid. A little life in it. */
-    fun <T> spatial(): SpringSpec<T> =
-        spring(dampingRatio = 0.78f, stiffness = 380f)
+    fun <T> size(): FiniteAnimationSpec<T> =
+        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 520f)
 
-    /** Anything that changes height. Never overshoots - overshooting height
-     *  reflows the text underneath and looks like a fault. */
-    fun <T> size(): SpringSpec<T> =
-        spring(dampingRatio = 1f, stiffness = 300f)
-
-    /** Opacity. Critically damped, slowish, reads as a fade rather than a pop. */
-    fun <T> fade(): SpringSpec<T> =
-        spring(dampingRatio = 1f, stiffness = 260f)
+    fun <T> fade(): FiniteAnimationSpec<T> =
+        tween(durationMillis = 150, easing = LinearOutSlowInEasing)
 }
 
-/** True when the user has left animations on. */
+/* Settings → Animations: Full, Reduced, None. At None every wrapper below
+   snaps to its target, so "off" costs nothing rather than animating to zero. */
 val animationsOn: Boolean
     @Composable get() = Syn.reading.animations > 0f
 
-@Composable
-private fun <T> honour(spec: SpringSpec<T>): AnimationSpec<T> =
-    if (animationsOn) spec else snap()
+private val scale: Float
+    @Composable get() = Syn.reading.animations.coerceIn(0f, 1f)
 
 @Composable
-fun animFloat(target: Float, spec: SpringSpec<Float> = Motion.quick()): State<Float> =
-    animateFloatAsState(targetValue = target, animationSpec = honour(spec), label = "f")
+fun animFloat(
+    target: Float,
+    spec: AnimationSpec<Float> = Motion.quick(),
+    label: String = "float",
+): Float =
+    if (!animationsOn) target
+    else animateFloatAsState(targetValue = target, animationSpec = spec, label = label).value
 
 @Composable
-fun animDp(target: Dp, spec: SpringSpec<Dp> = Motion.spatial()): State<Dp> =
-    animateDpAsState(targetValue = target, animationSpec = honour(spec), label = "dp")
+fun animDp(
+    target: Dp,
+    spec: AnimationSpec<Dp> = Motion.size(),
+    label: String = "dp",
+): Dp =
+    if (!animationsOn) target
+    else animateDpAsState(targetValue = target, animationSpec = spec, label = label).value
 
 @Composable
-fun animColor(target: Color, spec: SpringSpec<Color> = Motion.quick()): State<Color> =
-    animateColorAsState(targetValue = target, animationSpec = honour(spec), label = "c")
-
-/**
- * The press. Everything tappable in the app gets this and nothing else, which
- * is what makes a set of unrelated widgets feel like one piece of software.
- *
- * Scale rather than a ripple: a ripple has to draw and clip, this is a layer
- * transform the GPU does for free, and it survives being interrupted.
- */
-@Composable
-fun Modifier.pressScale(
-    interaction: MutableInteractionSource,
-    down: Float = 0.972f,
-): Modifier {
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animFloat(if (pressed) down else 1f, Motion.quick())
-    return this.graphicsLayer {
-        scaleX = scale
-        scaleY = scale
-    }
-}
+fun animColor(
+    target: Color,
+    spec: AnimationSpec<Color> = Motion.fade(),
+    label: String = "colour",
+): Color =
+    if (!animationsOn) target
+    else animateColorAsState(targetValue = target, animationSpec = spec, label = label).value
 
 @Composable
 fun rememberInteraction(): MutableInteractionSource =
     remember { MutableInteractionSource() }
+
+/*
+ * The press. Reads the interaction source, animates a scale, and applies it
+ * in a graphicsLayer lambda - the lambda form, so the value is read during
+ * the draw phase and a press never invalidates composition or layout.
+ */
+@Composable
+fun Modifier.pressScale(
+    interaction: InteractionSource,
+    down: Float = 0.972f,
+): Modifier {
+    val pressed by interaction.collectIsPressedAsState()
+    val amount = 1f - ((1f - down) * scale)
+    val target = if (pressed) amount else 1f
+    val s = animFloat(target, Motion.quick(), "press")
+    return this.graphicsLayer {
+        scaleX = s
+        scaleY = s
+    }
+}
+
+/* A one-shot entrance for a card or a row: fades and lifts eight dp.
+   `index` staggers a list by twenty milliseconds a row, capped at six rows
+   so a long list never feels like it is loading in slow motion. */
+@Composable
+fun Modifier.appearance(progress: Float): Modifier {
+    val p = progress.coerceIn(0f, 1f)
+    return this.graphicsLayer {
+        alpha = p
+        translationY = (1f - p) * 8.dp.toPx()
+    }
+}

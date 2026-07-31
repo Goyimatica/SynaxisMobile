@@ -1,0 +1,9 @@
+HSPLcom/goyimatica/synaxismobile/**->**(**)**
+HSPLandroidx/compose/runtime/**->**(**)**
+HSPLandroidx/compose/ui/**->**(**)**
+HSPLandroidx/compose/foundation/**->**(**)**
+HSPLandroidx/compose/material3/**->**(**)**
+HSPLandroidx/compose/animation/**->**(**)**
+HSPLandroidx/navigation/**->**(**)**
+HSPLkotlinx/coroutines/**->**(**)**
+HSPLcoil3/**->**(**)**

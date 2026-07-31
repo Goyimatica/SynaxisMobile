@@ -1,7 +1,29 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+/* ---- signing ------------------------------------------------------------
+ * keystore.properties (never committed) or four environment variables.
+ * Either way the key itself stays out of git.
+ */
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
+fun secret(key: String, env: String): String? =
+    keystoreProperties.getProperty(key) ?: System.getenv(env)
+
+val releaseStorePath = secret("storeFile", "SYNAXIS_STORE_FILE")
+val releaseStorePass = secret("storePassword", "SYNAXIS_STORE_PASSWORD")
+val releaseKeyAlias = secret("keyAlias", "SYNAXIS_KEY_ALIAS")
+val releaseKeyPass = secret("keyPassword", "SYNAXIS_KEY_PASSWORD")
+val canSignRelease =
+    releaseStorePath != null && rootProject.file(releaseStorePath).exists() &&
+        releaseStorePass != null && releaseKeyAlias != null && releaseKeyPass != null
 
 android {
     namespace = "com.goyimatica.synaxismobile"
@@ -11,14 +33,28 @@ android {
         applicationId = "com.goyimatica.synaxismobile"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+
+        // CI passes VERSION_CODE and VERSION_NAME from the tag; locally these win.
+        versionCode = (System.getenv("VERSION_CODE") ?: "6").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
-
-        // the ten fonts and the two JSON assets are all we ship; no language splits yet
         resourceConfigurations += listOf("en")
+    }
+
+    signingConfigs {
+        if (canSignRelease) {
+            create("release") {
+                storeFile = rootProject.file(releaseStorePath!!)
+                storePassword = releaseStorePass
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPass
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
     }
 
     buildTypes {
@@ -27,18 +63,23 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isDebuggable = false
+            /* R8 stays off on purpose - see the note above this file. */
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = if (canSignRelease) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
     compileOptions {
-        // java.time on minSdk 24 — without this, LocalDate is API 26+ and the
-        // whole calendar engine would refuse to run on older phones.
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -50,8 +91,6 @@ android {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
 
-    // assets are already compressed text; leaving the fonts uncompressed lets
-    // Android memory-map them instead of inflating them at every launch
     androidResources {
         noCompress += listOf("ttf")
     }
@@ -66,6 +105,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.profileinstaller)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -78,6 +118,7 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

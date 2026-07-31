@@ -12,3 +12,9 @@ local.properties
 *.aab
 *.keystore
 !gradle/wrapper/gradle-wrapper.jar
+# signing
+keystore.properties
+*.jks
+*.jks.old
+*.keystore
+keystore.b64
