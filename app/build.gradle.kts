@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.goyimatica.synaxismobile"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.goyimatica.synaxismobile"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
