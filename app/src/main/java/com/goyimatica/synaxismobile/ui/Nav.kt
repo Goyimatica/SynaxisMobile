@@ -15,6 +15,7 @@ object Routes {
     const val CALENDAR = "calendar"
     const val LIBRARY = "library"
     const val SEARCH = "search"
+    const val SETTINGS = "settings"
 
     const val SAINT_ARG = "id"
     const val SAINT = "saint/{id}"
@@ -28,8 +29,7 @@ object Routes {
 }
 
 /** A tab. A null icon means the Russian cross, which is drawn rather than
- *  loaded - no Material glyph is the right shape, and the wrong shape on the
- *  Today tab was the first thing you noticed in the web app. */
+ *  loaded - no Material glyph is the right shape. */
 data class Tab(val route: String, val label: String, val icon: ImageVector?)
 
 val TABS: List<Tab> = listOf(

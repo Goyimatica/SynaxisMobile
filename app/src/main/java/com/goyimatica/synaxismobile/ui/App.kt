@@ -54,6 +54,7 @@ import com.goyimatica.synaxismobile.ui.screens.LibraryScreen
 import com.goyimatica.synaxismobile.ui.screens.LivesScreen
 import com.goyimatica.synaxismobile.ui.screens.SaintScreen
 import com.goyimatica.synaxismobile.ui.screens.SearchScreen
+import com.goyimatica.synaxismobile.ui.screens.SettingsScreen
 import com.goyimatica.synaxismobile.ui.screens.TodayScreen
 import com.goyimatica.synaxismobile.ui.theme.Syn
 import com.goyimatica.synaxismobile.ui.theme.SynaxisTheme
@@ -154,8 +155,16 @@ private fun Shell() {
             composable(Routes.TODAY) { TodayScreen(onOpenSaint = open) }
             composable(Routes.LIVES) { LivesScreen(onOpenSaint = open) }
             composable(Routes.CALENDAR) { CalendarScreen(onOpenSaint = open) }
-            composable(Routes.LIBRARY) { LibraryScreen(onOpenSaint = open) }
+            composable(Routes.LIBRARY) {
+                LibraryScreen(
+                    onOpenSaint = open,
+                    onOpenSettings = { nav.navigate(Routes.SETTINGS) },
+                )
+            }
             composable(Routes.SEARCH) { SearchScreen(onOpenSaint = open) }
+            composable(Routes.SETTINGS) {
+                SettingsScreen(onBack = { nav.popBackStack() })
+            }
             composable(
                 route = Routes.SAINT,
                 arguments = listOf(navArgument(Routes.SAINT_ARG) { type = NavType.StringType }),
