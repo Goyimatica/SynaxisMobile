@@ -1,17 +1,12 @@
 package com.goyimatica.synaxismobile.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,13 +14,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,142 +32,137 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.goyimatica.synaxismobile.core.FastLevel
+import com.goyimatica.synaxismobile.ui.Motion
+import com.goyimatica.synaxismobile.ui.animColor
+import com.goyimatica.synaxismobile.ui.animDp
+import com.goyimatica.synaxismobile.ui.pressScale
+import com.goyimatica.synaxismobile.ui.rememberInteraction
 import com.goyimatica.synaxismobile.ui.theme.Syn
 
 /**
- * The eight-pointed Russian cross, drawn.
+ * The Russian cross, drawn rather than shipped as a vector, so it takes the
+ * palette's gold and any size without a second asset.
  *
- * Three bars: the titulus that carried the inscription, the crossbar, and the
- * suppedaneum - the footrest, which slants. Its raised end is on the viewer's
- * LEFT, the side of the thief who repented and was promised paradise; the
- * lowered end points to the other. Getting that backwards inverts the meaning,
- * which is why it is written down here.
+ * Three bars: the titulus above, the crossbar, and the slanted footrest whose
+ * left end - Christ's right, the side of the repentant thief - is the high
+ * one. Coordinates are in a hundred-unit square and scaled.
  */
 @Composable
 fun OrthodoxCross(
     modifier: Modifier = Modifier,
+    size: Dp = 22.dp,
     color: Color = Syn.colors.gold,
 ) {
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        val t = (w * 0.115f).coerceAtLeast(1.4f)   // bar thickness
-        val cx = w / 2f
+    Canvas(modifier.size(size)) {
+        val s = this.size.minDimension / 100f
+        fun rect(x: Float, y: Float, w: Float, h: Float) =
+            drawRect(color, Offset(x * s, y * s), Size(w * s, h * s))
 
-        // upright
-        drawRect(color, Offset(cx - t / 2f, 0f), Size(t, h))
+        rect(48.5f, 20f, 5f, 66f)   // the shaft
+        rect(41f, 30f, 20f, 4.5f)   // the titulus
+        rect(31f, 44f, 40f, 5f)     // the crossbar
 
-        // titulus - short, high
-        val ty = h * 0.15f
-        drawRect(color, Offset(cx - w * 0.20f, ty), Size(w * 0.40f, t * 0.85f))
-
-        // crossbar - the long one
-        val my = h * 0.35f
-        drawRect(color, Offset(cx - w * 0.40f, my), Size(w * 0.80f, t))
-
-        // suppedaneum - raised on the viewer's left
-        val fy = h * 0.72f
-        val dx = w * 0.26f
-        val rise = h * 0.075f
         val foot = Path().apply {
-            moveTo(cx - dx, fy - rise)
-            lineTo(cx + dx, fy + rise)
-            lineTo(cx + dx, fy + rise + t)
-            lineTo(cx - dx, fy - rise + t)
+            moveTo(35f * s, 62f * s)
+            lineTo(67f * s, 70f * s)
+            lineTo(67f * s, 75f * s)
+            lineTo(35f * s, 67f * s)
             close()
         }
         drawPath(foot, color)
     }
 }
 
-/** The kicker + title + subtitle every screen opens with. No back arrow: these
- *  are tabs, not pushed screens, and a back arrow on a home screen is a lie. */
+/**
+ * Every tab opens with this, which is why the gear lives here rather than in
+ * one screen. `trailing` is for anything a particular screen needs beside it.
+ */
 @Composable
 fun ScreenHeader(
-    kicker: String,
+    overline: String,
     title: String,
     subtitle: String? = null,
-    modifier: Modifier = Modifier,
+    onSettings: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val c = Syn.colors
-    Column(modifier.fillMaxWidth()) {
-        Text(kicker.uppercase(), style = MaterialTheme.typography.labelSmall, color = c.gold)
-        Spacer(Modifier.height(10.dp))
-        Text(title, style = MaterialTheme.typography.headlineLarge, color = c.text)
-        if (!subtitle.isNullOrBlank()) {
-            Spacer(Modifier.height(6.dp))
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = c.dim)
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(overline.uppercase(), style = MaterialTheme.typography.labelSmall, color = c.gold)
+            Spacer(Modifier.height(10.dp))
+            Text(title, style = MaterialTheme.typography.headlineLarge, color = c.text)
+            if (!subtitle.isNullOrBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = c.dim)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            trailing?.invoke()
+            if (onSettings != null) {
+                if (trailing != null) Spacer(Modifier.width(16.dp))
+                val press = rememberInteraction()
+                Icon(
+                    Icons.Outlined.Settings,
+                    "Settings",
+                    tint = c.dim,
+                    modifier = Modifier
+                        .size(23.dp)
+                        .pressScale(press, down = 0.86f)
+                        .clickable(
+                            interactionSource = press,
+                            indication = null,
+                            onClick = onSettings,
+                        ),
+                )
+            }
         }
     }
 }
 
 @Composable
-fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+fun SectionLabel(text: String) {
     Text(
         text.uppercase(),
         style = MaterialTheme.typography.labelSmall,
         color = Syn.colors.faint,
-        modifier = modifier,
     )
 }
 
 @Composable
 fun HairRule(modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(Syn.colors.rule),
-    )
+    Box(modifier.fillMaxWidth().height(1.dp).background(Syn.colors.rule))
 }
 
-/**
- * A card that answers to a press. The scale is small on purpose - 2.5% is felt
- * rather than seen - and it is switched off entirely when the animations
- * setting is off, which some people need rather than merely prefer.
- */
+/** The one press in the app. Anything tappable that is not an icon uses it. */
 @Composable
 fun Pressable(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(14.dp),
-    background: Color = Syn.colors.surface,
-    outlined: Boolean = false,
-    contentPadding: Int = 16,
-    content: @Composable ColumnScope.() -> Unit,
+    down: Float = 0.972f,
+    content: @Composable () -> Unit,
 ) {
-    val c = Syn.colors
-    val lively = Syn.reading.animations > 0f
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && lively) 0.975f else 1f,
-        animationSpec = tween(durationMillis = if (lively) 110 else 0),
-        label = "press",
-    )
-
-    Column(
-        modifier = modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(shape)
-            .background(background)
-            .then(if (outlined) Modifier.border(1.dp, c.rule, shape) else Modifier)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(contentPadding.dp),
-        content = content,
-    )
+    val press = rememberInteraction()
+    Box(
+        modifier
+            .pressScale(press, down)
+            .clickable(interactionSource = press, indication = null, onClick = onClick),
+    ) { content() }
 }
 
-/** A filter pill. Gold when chosen, a hairline when not. */
+/**
+ * A chip that changes shape as well as colour when it is chosen. The corner
+ * radius travelling from a full round to something squarer is the whole trick
+ * behind the new Material buttons, and a spring on a Dp gets it exactly.
+ */
 @Composable
 fun SynChip(
     text: String,
@@ -177,48 +171,38 @@ fun SynChip(
     modifier: Modifier = Modifier,
 ) {
     val c = Syn.colors
-    val lively = Syn.reading.animations > 0f
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && lively) 0.94f else 1f,
-        animationSpec = tween(durationMillis = if (lively) 100 else 0),
-        label = "chip",
-    )
-    val shape = RoundedCornerShape(50)
+    val press = rememberInteraction()
+
+    val radius by animDp(if (selected) 11.dp else 22.dp, Motion.spatial())
+    val fill by animColor(if (selected) c.gold else c.surface)
+    val ink by animColor(if (selected) c.bg else c.dim)
+    val edge by animColor(if (selected) c.gold else c.rule)
+    val shape = RoundedCornerShape(radius)
 
     Box(
-        modifier = modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+        modifier
+            .pressScale(press, down = 0.94f)
             .clip(shape)
-            .background(if (selected) c.gold else Color.Transparent)
-            .border(1.dp, if (selected) c.gold else c.rule, shape)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .background(fill)
+            .border(1.dp, edge, shape)
+            .clickable(interactionSource = press, indication = null, onClick = onClick)
+            .padding(horizontal = 15.dp, vertical = 9.dp),
     ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) (if (c.isDark) Color(0xFF14100E) else Color(0xFFFFFDF8)) else c.dim,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-        )
+        Text(text, style = MaterialTheme.typography.labelLarge, color = ink)
     }
 }
 
-/**
- * One colour per degree of fasting, used by the calendar grid and the dots.
- * Deliberately not six shades of one hue: at a glance you need to tell a fish
- * day from an oil day without reading anything.
- */
+// ---------------------------------------------------------------- fasting
+
 @Composable
 fun fastColor(level: FastLevel): Color {
     val c = Syn.colors
     return when (level) {
         FastLevel.NONE -> c.faint
-        FastLevel.DAIRY -> Color(0xFF7FA86B)
-        FastLevel.FISH -> Color(0xFF5B85B8)
+        FastLevel.DAIRY -> Color(0xFF8FB08A)
+        FastLevel.FISH -> Color(0xFF6E9BC5)
         FastLevel.OIL -> c.gold
-        FastLevel.XEROPHAGY -> Color(0xFFB5794A)
+        FastLevel.XEROPHAGY -> Color(0xFFC98B4B)
         FastLevel.STRICT -> c.blood
     }
 }
@@ -233,66 +217,65 @@ fun fastWord(level: FastLevel): String = when (level) {
 }
 
 @Composable
-fun FastDot(level: FastLevel, modifier: Modifier = Modifier, size: Int = 6) {
+fun FastDot(level: FastLevel, size: Dp = 9.dp) {
     Box(
-        modifier
-            .size(size.dp)
+        Modifier
+            .size(size)
             .clip(CircleShape)
             .background(fastColor(level)),
     )
 }
 
-/** The round letter that stands in for a portrait until one is downloaded. */
+/** The gold ring with an initial in it, standing in for an icon we have not
+ *  downloaded yet. */
 @Composable
-fun Medallion(letter: Char, modifier: Modifier = Modifier, diameter: Int = 44) {
+fun Medallion(initial: String, size: Dp = 44.dp) {
     val c = Syn.colors
     Box(
-        modifier
-            .size(diameter.dp)
+        Modifier
+            .size(size)
             .clip(CircleShape)
             .background(c.raised)
-            .border(1.dp, c.rule, CircleShape),
+            .border(1.dp, c.goldDim, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            letter.toString(),
-            style = MaterialTheme.typography.headlineSmall,
+            initial.take(1).uppercase(),
+            style = MaterialTheme.typography.titleLarge,
             color = c.goldDim,
         )
     }
 }
 
 @Composable
-fun EmptyNote(text: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier.fillMaxWidth().padding(vertical = 34.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+fun EmptyNote(text: String) {
+    Box(
+        Modifier.fillMaxWidth().padding(vertical = 40.dp, horizontal = 24.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        OrthodoxCross(Modifier.size(22.dp, 34.dp), Syn.colors.faint)
-        Spacer(Modifier.height(14.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = Syn.colors.faint)
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
+            color = Syn.colors.faint,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
-/** A row of small tag pills, used on the saint cards. */
 @Composable
-fun TagStrip(tags: List<String>, modifier: Modifier = Modifier, max: Int = 3) {
-    val c = Syn.colors
+fun TagStrip(tags: List<String>, modifier: Modifier = Modifier) {
     if (tags.isEmpty()) return
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        tags.take(max).forEach { t ->
+    val c = Syn.colors
+    LazyRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(tags, key = { it }) { t ->
             Box(
                 Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(7.dp))
                     .background(c.raised)
-                    .padding(horizontal = 7.dp, vertical = 3.dp),
+                    .padding(horizontal = 9.dp, vertical = 4.dp),
             ) {
-                Text(t, style = MaterialTheme.typography.labelSmall, color = c.dim)
+                Text(t, style = MaterialTheme.typography.labelSmall, color = c.faint)
             }
-        }
-        if (tags.size > max) {
-            Spacer(Modifier.width(2.dp))
-            Text("+" + (tags.size - max), style = MaterialTheme.typography.labelSmall, color = c.faint)
         }
     }
 }

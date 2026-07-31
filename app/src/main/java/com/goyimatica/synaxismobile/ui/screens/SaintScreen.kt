@@ -1,6 +1,12 @@
 package com.goyimatica.synaxismobile.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +17,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -22,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,6 +46,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -48,8 +59,12 @@ import com.goyimatica.synaxismobile.data.Mark
 import com.goyimatica.synaxismobile.data.SaintsRepo
 import com.goyimatica.synaxismobile.data.Store
 import com.goyimatica.synaxismobile.data.WikiRepo
+import com.goyimatica.synaxismobile.ui.Motion
+import com.goyimatica.synaxismobile.ui.animFloat
 import com.goyimatica.synaxismobile.ui.components.EmptyNote
 import com.goyimatica.synaxismobile.ui.components.SectionLabel
+import com.goyimatica.synaxismobile.ui.pressScale
+import com.goyimatica.synaxismobile.ui.rememberInteraction
 import com.goyimatica.synaxismobile.ui.reader.MarkSheet
 import com.goyimatica.synaxismobile.ui.reader.NoteDialog
 import com.goyimatica.synaxismobile.ui.reader.ReaderText
@@ -72,6 +87,7 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
     var doc by remember(saintId) { mutableStateOf<Doc?>(WikiRepo.cached(saintId)) }
     var loading by remember(saintId) { mutableStateOf(doc == null) }
     var failed by remember(saintId) { mutableStateOf(false) }
+    var briefOpen by remember(saintId) { mutableStateOf(false) }
 
     val selection = remember(saintId) { SelectionState() }
     var sheetKey by remember(saintId) { mutableStateOf<String?>(null) }
@@ -84,17 +100,12 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
     LaunchedEffect(saintId) {
         val s = saint ?: return@LaunchedEffect
         Store.touch(s.id)
-        if (doc == null) {
-            loading = true
-            val fetched = WikiRepo.doc(s)
-            doc = fetched
-            failed = fetched == null || fetched.missing
-            loading = false
-        }
+        val fetched = WikiRepo.doc(s)
+        doc = fetched ?: doc
+        failed = fetched == null || fetched.missing
+        loading = false
     }
 
-    /* How far down the life you are, kept for the Continue cards. Written only
-       when it has actually moved, so scrolling does not hammer the disk. */
     LaunchedEffect(saintId, scroll) {
         var last = -1f
         snapshotFlow { scroll.value to scroll.maxValue }.collect { (v, max) ->
@@ -124,36 +135,52 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
 
-        /* ---- the bar ---- */
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
+            val backPress = rememberInteraction()
             Icon(
                 Icons.Outlined.ArrowBack, "Back", tint = c.dim,
-                modifier = Modifier.size(23.dp).clickable { onBack() },
+                modifier = Modifier
+                    .size(23.dp)
+                    .pressScale(backPress, down = 0.85f)
+                    .clickable(interactionSource = backPress, indication = null, onClick = onBack),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val refreshPress = rememberInteraction()
                 Icon(
                     Icons.Outlined.Refresh, "Fetch the life again", tint = c.dim,
-                    modifier = Modifier.size(20.dp).clickable {
-                        scope.launch {
-                            loading = true
-                            val fresh = WikiRepo.doc(saint, force = true)
-                            doc = fresh
-                            failed = fresh == null || fresh.missing
-                            loading = false
-                        }
-                    },
+                    modifier = Modifier
+                        .size(20.dp)
+                        .pressScale(refreshPress, down = 0.85f)
+                        .clickable(
+                            interactionSource = refreshPress,
+                            indication = null,
+                        ) {
+                            scope.launch {
+                                loading = true
+                                val fresh = WikiRepo.doc(saint, force = true)
+                                doc = fresh ?: doc
+                                failed = fresh == null || fresh.missing
+                                loading = false
+                            }
+                        },
                 )
                 Spacer(Modifier.width(18.dp))
+                val savePress = rememberInteraction()
                 Icon(
                     if (library.isBookmarked(saint.id)) Icons.Filled.Bookmark
                     else Icons.Outlined.BookmarkBorder,
                     "Save",
                     tint = if (library.isBookmarked(saint.id)) c.gold else c.dim,
-                    modifier = Modifier.size(22.dp).clickable { Store.toggleBookmark(saint.id) },
+                    modifier = Modifier
+                        .size(22.dp)
+                        .pressScale(savePress, down = 0.82f)
+                        .clickable(interactionSource = savePress, indication = null) {
+                            Store.toggleBookmark(saint.id)
+                        },
                 )
             }
         }
@@ -164,7 +191,6 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                 .verticalScroll(scroll)
                 .padding(horizontal = 20.dp),
         ) {
-            /* ---- who ---- */
             Text(saint.name, style = MaterialTheme.typography.displayMedium, color = c.text)
             if (saint.epithet.isNotBlank()) {
                 Spacer(Modifier.height(7.dp))
@@ -181,37 +207,77 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                 color = c.faint,
             )
 
+            /* ---- the icon ---- */
             val image = d?.image
             if (!image.isNullOrBlank()) {
-                Spacer(Modifier.height(20.dp))
-                AsyncImage(
-                    model = image,
-                    contentDescription = saint.name,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(0.78f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(c.surface),
-                )
+                Spacer(Modifier.height(22.dp))
+                IconFrame(url = image, label = saint.name)
             }
 
-            /* ---- in brief ---- */
+            /* ---- in brief, closed until asked ---- */
             if (d != null && d.hasFull && d.intro.isNotBlank()) {
                 Spacer(Modifier.height(24.dp))
+                val turn by animFloat(if (briefOpen) 90f else 0f, Motion.spatial())
+                val press = rememberInteraction()
+
                 Column(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .background(c.surface)
+                        .border(1.dp, c.rule, RoundedCornerShape(14.dp))
+                        .clickable(
+                            interactionSource = press,
+                            indication = null,
+                        ) { briefOpen = !briefOpen }
                         .padding(17.dp),
                 ) {
-                    SectionLabel("In brief")
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        d.intro,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
-                        color = c.dim,
-                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        SectionLabel("In brief")
+                        Icon(
+                            Icons.Outlined.ChevronRight,
+                            if (briefOpen) "Close" else "Open",
+                            tint = c.goldDim,
+                            modifier = Modifier.size(19.dp).rotate(turn),
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = briefOpen,
+                        enter = fadeIn(Motion.fade()) + expandVertically(Motion.size()),
+                        exit = fadeOut(Motion.fade()) + shrinkVertically(Motion.size()),
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                d.intro,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontStyle = FontStyle.Italic,
+                                ),
+                                color = c.dim,
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = !briefOpen,
+                        enter = fadeIn(Motion.fade()),
+                        exit = fadeOut(Motion.fade()),
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(9.dp))
+                            Text(
+                                d.intro.take(88).trimEnd() + "\u2026",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = c.faint,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -229,14 +295,12 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                     )
                 }
                 body.isBlank() || failed -> {
-                    Column {
-                        Text(
-                            "No life has been downloaded for this saint yet. Tap the arrows " +
-                                "above to try again, or sync everything at once from Settings.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = c.faint,
-                        )
-                    }
+                    Text(
+                        "No life has been downloaded for this saint yet. Tap the arrows " +
+                            "above to try again, or sync everything at once from Settings.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.faint,
+                    )
                 }
                 else -> {
                     ReaderText(
@@ -274,7 +338,6 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                 }
             }
 
-            /* ---- where it came from ---- */
             if (d != null && !d.missing) {
                 Spacer(Modifier.height(30.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.rule))
@@ -292,7 +355,6 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
         }
     }
 
-    /* ---- the sheet, for a highlight that already exists ---- */
     val open = sheetKey?.let { k -> marks.firstOrNull { it.key == k } }
     if (open != null) {
         MarkSheet(
@@ -316,7 +378,6 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
         )
     }
 
-    /* ---- a note on an existing highlight ---- */
     val noting = noteKey?.let { k -> marks.firstOrNull { it.key == k } }
     if (noting != null) {
         NoteDialog(
@@ -330,8 +391,6 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
         )
     }
 
-    /* ---- a note on something just selected: highlight it and annotate it in
-            one movement, which is how anybody actually reads ---- */
     if (notingSelection) {
         val chosen = selection.textOf(body)
         NoteDialog(
@@ -362,3 +421,52 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
         )
     }
 }
+
+/**
+ * The icon in its mount.
+ *
+ * The ratio is the image's own, learned when Coil finishes decoding and
+ * clamped: nothing narrower than three to four, nothing wider than five to
+ * four, so a panoramic fresco and a tall Byzantine icon both sit properly on
+ * the page. Height is capped so a portrait icon cannot fill the screen.
+ */
+@Composable
+private fun IconFrame(url: String, label: String) {
+    val c = Syn.colors
+    var ratio by remember(url) { mutableFloatStateOf(0.82f) }
+    var ready by remember(url) { mutableStateOf(false) }
+    val fade by animFloat(if (ready) 1f else 0f, Motion.fade())
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(c.surface)
+            .border(1.dp, c.goldDim.copy(alpha = 0.55f), RoundedCornerShape(16.dp))
+            .padding(7.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = url,
+            contentDescription = label,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 420.dp)
+                .aspectRatio(ratio)
+                .clip(RoundedCornerShape(11.dp))
+                .background(c.raised)
+                .graphicsAlpha(fade),
+            onSuccess = { success ->
+                val s = success.painter.intrinsicSize
+                if (s.isSpecified && s.height > 0f) {
+                    ratio = (s.width / s.height).coerceIn(0.75f, 1.25f)
+                }
+                ready = true
+            },
+        )
+    }
+}
+
+/** A tiny helper so the fade does not need a graphicsLayer import at the call. */
+private fun Modifier.graphicsAlpha(value: Float): Modifier =
+    this.then(androidx.compose.ui.draw.alpha(value))

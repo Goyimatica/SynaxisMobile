@@ -7,80 +7,78 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.TextLayoutResult
 
+/**
+ * Two integers and a layout. That is the whole selection.
+ *
+ * Everything here refuses to write a value that has not changed, because a
+ * write is a recomposition and a recomposition of a long life is a measurable
+ * amount of work. A drag across a paragraph produces one write per character
+ * crossed, not one per pointer sample.
+ */
 @Stable
 class SelectionState {
 
-    /** The last layout of the reader's text. Everything else needs it. */
-    var layout by mutableStateOf<TextLayoutResult?>(null)
+    var layout: TextLayoutResult? by mutableStateOf(null)
 
     var start by mutableIntStateOf(-1)
-    var end by mutableIntStateOf(-1)
+        private set
 
-    /* The word the long press landed on. The edges may travel, but neither may
-       cross this, which is what stops a selection turning inside out. */
-    var anchorStart by mutableIntStateOf(-1)
-    var anchorEnd by mutableIntStateOf(-1)
+    var end by mutableIntStateOf(-1)
+        private set
+
+    /** 0 nothing, 1 the left handle, 2 the right. Kept so the reader can hide
+     *  the action bar while a handle is under the finger. */
+    var dragging by mutableIntStateOf(0)
 
     val active: Boolean get() = start >= 0 && end > start
 
-    val length: Int get() = layout?.layoutInput?.text?.length ?: 0
+    val length: Int get() = if (active) end - start else 0
+
+    val anchorStart: Int get() = start
+    val anchorEnd: Int get() = end
 
     fun clear() {
-        start = -1
-        end = -1
-        anchorStart = -1
-        anchorEnd = -1
+        if (start != -1) start = -1
+        if (end != -1) end = -1
+        if (dragging != 0) dragging = 0
     }
 
-    /** A long press selects the word beneath it. */
+    fun select(a: Int, b: Int) {
+        val lo = minOf(a, b)
+        val hi = maxOf(a, b)
+        if (hi <= lo) return
+        if (start != lo) start = lo
+        if (end != hi) end = hi
+    }
+
+    /** A long press takes the whole word under the finger, never a bare caret. */
     fun selectWordAt(offset: Int) {
         val l = layout ?: return
-        val n = l.layoutInput.text.length
-        if (n == 0) return
-        val o = offset.coerceIn(0, n - 1)
-        val word = l.getWordBoundary(o)
-        var a = word.start
-        var b = word.end
-        if (b <= a) {
-            a = o
-            b = (o + 1).coerceAtMost(n)
+        val safe = offset.coerceIn(0, l.layoutInput.text.length)
+        val word = l.getWordBoundary(safe)
+        if (word.end > word.start) {
+            select(word.start, word.end)
+        } else {
+            select(safe, (safe + 1).coerceAtMost(l.layoutInput.text.length))
         }
-        start = a
-        end = b
-        anchorStart = a
-        anchorEnd = b
     }
 
-    /** Select an exact range - used when a saved highlight is reopened. */
-    fun select(a: Int, b: Int) {
-        val n = length
-        if (n == 0) return
-        start = a.coerceIn(0, n - 1)
-        end = b.coerceIn(start + 1, n)
-        anchorStart = start
-        anchorEnd = end
-    }
-
-    /** The leading handle, snapped outward to the start of its word. */
+    /**
+     * The left handle. It may never cross the right one - it stops one
+     * character short, which is what stops the selection flickering out of
+     * existence mid-drag and taking the action bar with it.
+     */
     fun dragStartTo(offset: Int) {
-        val l = layout ?: return
-        if (anchorEnd < 0) return
-        val n = l.layoutInput.text.length
-        val o = offset.coerceIn(0, n - 1)
-        val word = l.getWordBoundary(o)
-        val a = minOf(word.start, o)
-        start = a.coerceIn(0, anchorEnd - 1)
+        if (!active) return
+        val wanted = offset.coerceAtMost(end - 1).coerceAtLeast(0)
+        if (wanted != start) start = wanted
     }
 
-    /** The trailing handle, snapped outward to the end of its word. */
     fun dragEndTo(offset: Int) {
-        val l = layout ?: return
-        if (anchorStart < 0) return
-        val n = l.layoutInput.text.length
-        val o = offset.coerceIn(0, n)
-        val word = l.getWordBoundary(o.coerceAtMost(n - 1))
-        val b = maxOf(word.end, o)
-        end = b.coerceIn(anchorStart + 1, n)
+        if (!active) return
+        val limit = layout?.layoutInput?.text?.length ?: return
+        val wanted = offset.coerceAtLeast(start + 1).coerceAtMost(limit)
+        if (wanted != end) end = wanted
     }
 
     fun textOf(source: String): String {

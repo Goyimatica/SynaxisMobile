@@ -44,7 +44,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.goyimatica.synaxismobile.core.Cal
 import com.goyimatica.synaxismobile.data.QuotesRepo
 import com.goyimatica.synaxismobile.data.SaintsRepo
 import com.goyimatica.synaxismobile.data.Store
@@ -55,13 +54,17 @@ import com.goyimatica.synaxismobile.ui.LEAD_NAMES
 import com.goyimatica.synaxismobile.ui.PALETTE_NAMES
 import com.goyimatica.synaxismobile.ui.SIZE_NAMES
 import com.goyimatica.synaxismobile.ui.WEIGHT_NAMES
+import com.goyimatica.synaxismobile.ui.WEIGHT_VALUES
 import com.goyimatica.synaxismobile.ui.components.HairRule
 import com.goyimatica.synaxismobile.ui.components.SectionLabel
 import com.goyimatica.synaxismobile.ui.components.SynChip
+import com.goyimatica.synaxismobile.ui.pressScale
+import com.goyimatica.synaxismobile.ui.rememberInteraction
 import com.goyimatica.synaxismobile.ui.theme.Syn
 import com.goyimatica.synaxismobile.ui.theme.familyFor
 import com.goyimatica.synaxismobile.ui.toFace
 import com.goyimatica.synaxismobile.ui.toReading
+import com.goyimatica.synaxismobile.ui.weightIndex
 import kotlinx.coroutines.launch
 
 private const val SPECIMEN =
@@ -82,9 +85,6 @@ fun SettingsScreen(onBack: () -> Unit) {
     var confirmErase by remember { mutableStateOf(false) }
     var confirmClearCache by remember { mutableStateOf(false) }
 
-    /* WikiRepo counts the cache off the disk, so both of these suspend. A
-       composable body cannot suspend and must never block, so they are held as
-       state and refreshed whenever the cache could have changed. */
     var haveCount by remember { mutableIntStateOf(0) }
     var cacheKb by remember { mutableLongStateOf(0L) }
     var refresh by remember { mutableIntStateOf(0) }
@@ -99,9 +99,13 @@ fun SettingsScreen(onBack: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val press = rememberInteraction()
             Icon(
                 Icons.Outlined.ArrowBack, "Back", tint = c.dim,
-                modifier = Modifier.size(23.dp).clickable { onBack() },
+                modifier = Modifier
+                    .size(23.dp)
+                    .pressScale(press, down = 0.85f)
+                    .clickable(interactionSource = press, indication = null, onClick = onBack),
             )
             Spacer(Modifier.width(14.dp))
             Text("Settings", style = MaterialTheme.typography.headlineSmall, color = c.text)
@@ -111,7 +115,6 @@ fun SettingsScreen(onBack: () -> Unit) {
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            /* ---------- reading ---------- */
             item("r-label") { SectionLabel("Reading") }
 
             item("specimen") {
@@ -156,12 +159,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
             item("weight") {
-                ChipSetting(
-                    "Weight",
-                    WEIGHT_NAMES,
-                    if (settings.weight >= 600) 1 else 0,
-                ) { i ->
-                    Store.update { it.copy(weight = if (i == 1) 600 else 400) }
+                ChipSetting("Weight", WEIGHT_NAMES, weightIndex(settings.weight)) { i ->
+                    Store.update { it.copy(weight = WEIGHT_VALUES[i]) }
                 }
             }
             item("justify") {
@@ -186,7 +185,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 ) { v -> Store.update { it.copy(keepScreenOn = v) } }
             }
 
-            /* ---------- appearance ---------- */
             item("a-label") { Spacer(Modifier.height(14.dp)); SectionLabel("Appearance") }
             item("palette") {
                 ChipSetting("Palette", PALETTE_NAMES, settings.palette) { i ->
@@ -196,12 +194,12 @@ fun SettingsScreen(onBack: () -> Unit) {
             item("anim") {
                 SwitchSetting(
                     "Animations",
-                    "Fades and presses. Turn this off and everything happens at once.",
+                    "Springs and presses throughout. Turn this off and everything " +
+                        "happens at once, which is faster on an old phone.",
                     settings.animations,
                 ) { v -> Store.update { it.copy(animations = v) } }
             }
 
-            /* ---------- calendar ---------- */
             item("c-label") { Spacer(Modifier.height(14.dp)); SectionLabel("The calendar") }
             item("calstyle") {
                 ChipSetting("Reckoning", CALENDAR_NAMES, settings.calendarStyle) { i ->
@@ -217,7 +215,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 ) { v -> Store.update { it.copy(showPending = v) } }
             }
 
-            /* ---------- offline ---------- */
             item("o-label") { Spacer(Modifier.height(14.dp)); SectionLabel("Offline") }
             item("wifi") {
                 SwitchSetting(
@@ -250,6 +247,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = c.dim,
                     )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Syncing also fills in any icons that are missing.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.faint,
+                    )
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SynChip(
@@ -280,21 +283,16 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
-            /* ---------- about ---------- */
             item("about") {
                 Spacer(Modifier.height(20.dp))
                 HairRule()
                 Spacer(Modifier.height(16.dp))
                 Column {
-                    Text(
-                        "Synaxis",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = c.gold,
-                    )
+                    Text("Synaxis", style = MaterialTheme.typography.titleLarge, color = c.gold)
                     Spacer(Modifier.height(8.dp))
                     Text(
                         SaintsRepo.count.toString() + " lives \u00B7 " + QuotesRepo.count +
-                            " sayings \u00B7 " + Cal.count() + " commemorations",
+                            " sayings",
                         style = MaterialTheme.typography.bodySmall,
                         color = c.dim,
                     )
@@ -325,7 +323,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             text = {
                 Text(
                     "Your bookmarks, highlights and notes are kept. Only the downloaded " +
-                        "text goes, and it can be fetched again.",
+                        "text and icons go, and they can be fetched again.",
                     color = c.dim,
                 )
             },
@@ -389,11 +387,7 @@ private fun ChipSetting(
         Spacer(Modifier.height(9.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(options.size) { i ->
-                SynChip(
-                    text = options[i],
-                    selected = i == selected,
-                    onClick = { onPick(i) },
-                )
+                SynChip(text = options[i], selected = i == selected, onClick = { onPick(i) })
             }
         }
     }
