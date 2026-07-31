@@ -1,46 +1,43 @@
 package com.goyimatica.synaxismobile.ui.reader
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.Text
 import com.goyimatica.synaxismobile.data.Mark
-import com.goyimatica.synaxismobile.ui.Motion
-import com.goyimatica.synaxismobile.ui.animFloat
-import com.goyimatica.synaxismobile.ui.theme.SelWash
 import com.goyimatica.synaxismobile.ui.theme.Syn
 import com.goyimatica.synaxismobile.ui.theme.familyFor
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+/** `== Anything ==` on a line of its own, at any depth. */
+private val HEADING = Regex("(?m)^[ \\t]*(={2,6})[ \\t]*(.+?)[ \\t]*(={2,6})[ \\t]*$")
 
 /**
- * The life itself.
+ * The life, set as text, with highlights under it and a selection over it.
  *
- * Highlights are painted underneath the glyphs with the layout's own path for
- * the range, which is why they cover the spaces between words rather than
- * breaking into separate boxes.
+ * Everything is one `Text`. That matters: the marks are character offsets, so
+ * splitting the life into paragraphs or sections would mean translating every
+ * offset on every draw. One string, one layout, one set of coordinates.
  */
 @Composable
 fun ReaderText(
@@ -54,21 +51,75 @@ fun ReaderText(
     onCopy: () -> Unit,
 ) {
     val c = Syn.colors
-    val prefs = Syn.reading
+    val reading = Syn.reading
     val density = LocalDensity.current
-    val haptics = LocalHapticFeedback.current
 
-    val valid = remember(marks, text) { marks.valid(text.length) }
+    val headingSize = (reading.fontSizeSp * 1.16f).sp
+    val bodySize = reading.fontSizeSp.sp
 
-    val rendered = remember(text, prefs.dropCap, c.gold) {
-        if (!prefs.dropCap || text.isEmpty()) {
-            buildAnnotatedString { append(text) }
-        } else {
-            buildAnnotatedString {
-                withStyle(SpanStyle(color = c.gold, fontSize = (prefs.fontSizeSp * 2.1f).sp)) {
-                    append(text.substring(0, 1))
+    /* The string is rebuilt only when the text, the marks, the selection or
+       the reading settings actually change. */
+    val annotated: AnnotatedString = remember(text, marks, state.start, state.end, state.active, reading) {
+        buildAnnotatedString {
+            append(text)
+
+            // Headings: the markers vanish, the words become a heading.
+            HEADING.findAll(text).forEach { m ->
+                val open = m.groups[1] ?: return@forEach
+                val words = m.groups[2] ?: return@forEach
+                val close = m.groups[3] ?: return@forEach
+
+                addStyle(
+                    SpanStyle(color = Color.Transparent, fontSize = 0.1f.sp),
+                    open.range.first,
+                    open.range.last + 1,
+                )
+                addStyle(
+                    SpanStyle(color = Color.Transparent, fontSize = 0.1f.sp),
+                    close.range.first,
+                    close.range.last + 1,
+                )
+                addStyle(
+                    SpanStyle(
+                        fontSize = headingSize,
+                        fontWeight = FontWeight.SemiBold,
+                        color = c.gold,
+                        letterSpacing = 0.4.sp,
+                    ),
+                    words.range.first,
+                    words.range.last + 1,
+                )
+            }
+
+            // A drop capital, if it is wanted and the life starts with a letter.
+            if (reading.dropCap && text.firstOrNull()?.isLetter() == true) {
+                addStyle(
+                    SpanStyle(
+                        fontSize = (reading.fontSizeSp * 2.1f).sp,
+                        color = c.gold,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                    0,
+                    1,
+                )
+            }
+
+            // Highlights, oldest first so a newer one paints over an older.
+            marks.sortedBy { it.at }.forEach { mark ->
+                val a = mark.start.coerceIn(0, text.length)
+                val b = mark.end.coerceIn(a, text.length)
+                if (b > a) {
+                    addStyle(SpanStyle(background = markColor(c, mark.color)), a, b)
                 }
-                append(text.substring(1))
+            }
+
+            // The live selection sits above everything.
+            if (state.active && state.end > state.start) {
+                addStyle(
+                    SpanStyle(background = c.gold.copy(alpha = 0.30f)),
+                    state.start.coerceIn(0, text.length),
+                    state.end.coerceIn(0, text.length),
+                )
             }
         }
     }
@@ -76,152 +127,97 @@ fun ReaderText(
     Box(modifier.fillMaxWidth()) {
 
         Text(
-            text = rendered,
+            text = annotated,
+            color = c.text,
+            fontFamily = familyFor(reading.face),
+            fontSize = bodySize,
+            lineHeight = reading.lineHeightSp.sp,
+            fontWeight = FontWeight(reading.weight),
+            textAlign = if (reading.justify) TextAlign.Justify else TextAlign.Start,
+            onTextLayout = { state.layout = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .drawBehind {
-                    val l = state.layout ?: return@drawBehind
-
-                    valid.forEach { m ->
-                        val s = m.start.coerceIn(0, text.length)
-                        val e = m.end.coerceIn(s, text.length)
-                        if (e > s) {
-                            drawPath(
-                                l.getPathForRange(s, e),
-                                markColor(c, m.color).copy(alpha = if (c.isDark) 0.30f else 0.42f),
-                            )
-                        }
-                    }
-
-                    if (state.active) {
-                        drawPath(
-                            l.getPathForRange(state.start, state.end),
-                            SelWash.copy(alpha = if (c.isDark) 0.34f else 0.26f),
-                        )
-                    }
-                }
-                .pointerInput(text, valid) {
+                /* Tap and long press. This detector is always present and it
+                   does not consume drags, so the page still scrolls. */
+                .pointerInput(text, marks) {
                     detectTapGestures(
-                        onLongPress = { pos ->
-                            val l = state.layout ?: return@detectTapGestures
-                            state.selectWordAt(l.getOffsetForPosition(pos))
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        },
                         onTap = { pos ->
-                            val l = state.layout ?: return@detectTapGestures
-                            if (state.active) {
+                            val layout = state.layout
+                            if (layout == null) {
                                 state.clear()
                                 return@detectTapGestures
                             }
-                            val hit = valid.at(l.getOffsetForPosition(pos))
-                            if (hit != null) onMarkClick(hit)
+                            val offset = layout.getOffsetForPosition(pos)
+                            val hit = marks.firstOrNull { offset >= it.start && offset < it.end }
+                            when {
+                                state.active -> state.clear()
+                                hit != null -> onMarkClick(hit)
+                                else -> Unit
+                            }
+                        },
+                        onLongPress = { pos ->
+                            val layout = state.layout ?: return@detectTapGestures
+                            state.selectWordAt(layout.getOffsetForPosition(pos))
                         },
                     )
-                },
-            fontFamily = familyFor(prefs.face),
-            fontSize = prefs.fontSizeSp.sp,
-            lineHeight = prefs.lineHeightSp.sp,
-            fontWeight = FontWeight(prefs.weight),
-            textAlign = if (prefs.justify) TextAlign.Justify else TextAlign.Start,
-            color = c.text,
-            onTextLayout = { state.layout = it },
+                }
+                /* Handle dragging is attached ONLY while a selection exists.
+                   detectDragGestures consumes the touch slop, which would
+                   otherwise kill the scroll of the whole page. */
+                .then(
+                    if (!state.active) Modifier else Modifier.pointerInput(state.active, text) {
+                        var draggingStart = false
+                        detectDragGestures(
+                            onDragStart = { pos ->
+                                val layout = state.layout
+                                if (layout != null) {
+                                    val here = layout.getOffsetForPosition(pos)
+                                    draggingStart =
+                                        abs(here - state.start) <= abs(here - state.end)
+                                }
+                            },
+                            onDrag = { change, _ ->
+                                val layout = state.layout ?: return@detectDragGestures
+                                change.consume()
+                                val here = layout.getOffsetForPosition(change.position)
+                                if (draggingStart) state.dragStartTo(here)
+                                else state.dragEndTo(here)
+                            },
+                        )
+                    }
+                ),
         )
 
-        /*  Handles and the bar exist only while something is selected. That is
-            not tidiness - a drag detector left in the tree would consume the
-            touch slop that the scroll needs.  */
+        /* The two handles. Drawn, not composed, so they cost nothing. */
         val layout = state.layout
-        if (state.active && layout != null) {
-
-            val startRect = layout.getCursorRect(state.start.coerceIn(0, text.length))
-            val endRect = layout.getCursorRect(state.end.coerceIn(0, text.length))
-
-            Handle(
-                xPx = startRect.left,
-                yPx = startRect.bottom,
-                onDrag = { pos ->
-                    state.dragStartTo(layout.getOffsetForPosition(pos))
-                },
-                onDown = { state.dragging = 1 },
-                onUp = { state.dragging = 0 },
-            )
-
-            Handle(
-                xPx = endRect.left,
-                yPx = endRect.bottom,
-                onDrag = { pos ->
-                    state.dragEndTo(layout.getOffsetForPosition(pos))
-                },
-                onDown = { state.dragging = 2 },
-                onUp = { state.dragging = 0 },
-            )
-
-            /*  The bar rides above the top of the selection and springs from
-                line to line as the handles move.  */
-            val barX by animFloat(startRect.left, Motion.spatial())
-            val barY by animFloat(
-                (startRect.top - with(density) { 58.dp.toPx() }).coerceAtLeast(0f),
-                Motion.spatial(),
-            )
-            val fade by animFloat(if (state.dragging == 0) 1f else 0.35f, Motion.fade())
-
-            Box(
-                Modifier.offset(
-                    x = with(density) { barX.toDp() } - 20.dp,
-                    y = with(density) { barY.toDp() },
-                ),
-            ) {
-                if (fade > 0.05f) {
-                    SelectionBar(
-                        onHighlight = onHighlight,
-                        onNote = onNote,
-                        onCopy = onCopy,
-                        onDismiss = { state.clear() },
-                    )
+        if (state.active && layout != null && state.end > state.start) {
+            Canvas(Modifier.fillMaxWidth()) {
+                runCatching {
+                    val a = layout.getBoundingBox(state.start.coerceIn(0, text.length - 1))
+                    val b = layout.getBoundingBox((state.end - 1).coerceIn(0, text.length - 1))
+                    val r = 6.dp.toPx()
+                    drawCircle(c.gold, r, Offset(a.left, a.bottom + r * 0.6f))
+                    drawCircle(c.gold, r, Offset(b.right, b.bottom + r * 0.6f))
                 }
+            }
+
+            /* The bar, placed just above the first line of the selection and
+               nudged back on screen if the selection starts at the very top. */
+            val place = runCatching {
+                layout.getBoundingBox(state.start.coerceIn(0, text.length - 1))
+            }.getOrNull()
+
+            val dx = with(density) { ((place?.left ?: 0f) - 40.dp.toPx()).coerceAtLeast(0f) }
+            val dy = with(density) { ((place?.top ?: 0f) - 54.dp.toPx()).coerceAtLeast(0f) }
+
+            Box(Modifier.offset { IntOffset(dx.roundToInt(), dy.roundToInt()) }) {
+                SelectionBar(
+                    onHighlight = onHighlight,
+                    onNote = onNote,
+                    onCopy = onCopy,
+                    onDismiss = { state.clear() },
+                )
             }
         }
     }
-}
-
-@Composable
-private fun Handle(
-    xPx: Float,
-    yPx: Float,
-    onDrag: (Offset) -> Unit,
-    onDown: () -> Unit,
-    onUp: () -> Unit,
-) {
-    val c = Syn.colors
-    val density = LocalDensity.current
-
-    Box(
-        Modifier
-            .offset(
-                x = with(density) { xPx.toDp() } - 9.dp,
-                y = with(density) { yPx.toDp() } - 2.dp,
-            )
-            .size(18.dp)
-            .clip(CircleShape)
-            .background(c.gold)
-            .border(2.dp, c.bg, CircleShape)
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { onDown() },
-                    onDragEnd = { onUp() },
-                    onDragCancel = { onUp() },
-                ) { change, _ ->
-                    change.consume()
-                    /*  The pointer's position within the text, not within the
-                        handle - the handle sits below the line it belongs to,
-                        so the y is pulled back up into the line.  */
-                    onDrag(
-                        Offset(
-                            xPx + change.position.x - 9f,
-                            yPx + change.position.y - 24f,
-                        )
-                    )
-                }
-            },
-    )
 }

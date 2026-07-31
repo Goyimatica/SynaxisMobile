@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.isSpecified
@@ -426,9 +427,8 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
  * The icon in its mount.
  *
  * The ratio is the image's own, learned when Coil finishes decoding and
- * clamped: nothing narrower than three to four, nothing wider than five to
- * four, so a panoramic fresco and a tall Byzantine icon both sit properly on
- * the page. Height is capped so a portrait icon cannot fill the screen.
+ * clamped, so a panoramic fresco and a tall Byzantine icon both sit properly
+ * on the page. Height is capped so a portrait icon cannot fill the screen.
  */
 @Composable
 private fun IconFrame(url: String, label: String) {
@@ -455,7 +455,7 @@ private fun IconFrame(url: String, label: String) {
                 .aspectRatio(ratio)
                 .clip(RoundedCornerShape(11.dp))
                 .background(c.raised)
-                .graphicsAlpha(fade),
+                .alpha(fade),
             onSuccess = { success ->
                 val s = success.painter.intrinsicSize
                 if (s.isSpecified && s.height > 0f) {
@@ -466,7 +466,3 @@ private fun IconFrame(url: String, label: String) {
         )
     }
 }
-
-/** A tiny helper so the fade does not need a graphicsLayer import at the call. */
-private fun Modifier.graphicsAlpha(value: Float): Modifier =
-    this.then(androidx.compose.ui.draw.alpha(value))

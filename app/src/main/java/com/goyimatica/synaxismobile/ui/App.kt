@@ -49,11 +49,11 @@ import com.goyimatica.synaxismobile.ui.screens.CalendarScreen
 import com.goyimatica.synaxismobile.ui.screens.LibraryScreen
 import com.goyimatica.synaxismobile.ui.screens.LivesScreen
 import com.goyimatica.synaxismobile.ui.screens.SaintScreen
-import com.goyimatica.synaxismobile.ui.screens.SayingsScreen
+import com.goyimatica.synaxismobile.ui.screens.SearchScreen
 import com.goyimatica.synaxismobile.ui.screens.SettingsScreen
 import com.goyimatica.synaxismobile.ui.screens.TodayScreen
-import com.goyimatica.synaxismobile.ui.theme.SynaxisTheme
 import com.goyimatica.synaxismobile.ui.theme.Syn
+import com.goyimatica.synaxismobile.ui.theme.SynaxisTheme
 
 @Composable
 fun SynaxisApp() {
@@ -120,8 +120,8 @@ private fun Shell() {
                 composable(Routes.CALENDAR) {
                     CalendarScreen(onOpenSaint = openSaint, onOpenSettings = openSettings)
                 }
-                composable(Routes.SAYINGS) {
-                    SayingsScreen(onOpenSaint = openSaint, onOpenSettings = openSettings)
+                composable(Routes.SEARCH) {
+                    SearchScreen(onOpenSaint = openSaint, onOpenSettings = openSettings)
                 }
                 composable(Routes.LIBRARY) {
                     LibraryScreen(onOpenSaint = openSaint, onOpenSettings = openSettings)

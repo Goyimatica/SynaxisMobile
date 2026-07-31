@@ -7,35 +7,31 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.goyimatica.synaxismobile.core.FastRule
 import com.goyimatica.synaxismobile.core.Feast
 import com.goyimatica.synaxismobile.data.Saint
-import com.goyimatica.synaxismobile.ui.Motion
-import com.goyimatica.synaxismobile.ui.animFloat
 import com.goyimatica.synaxismobile.ui.theme.Syn
 
+/**
+ * A saint in a list. One tap opens the life; the medallion carries the
+ * initial so a list of forty scrolls without forty network images.
+ */
 @Composable
 fun SaintCard(
     saint: Saint,
@@ -45,6 +41,7 @@ fun SaintCard(
     overline: String? = null,
 ) {
     val c = Syn.colors
+
     Pressable(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Row(
             Modifier
@@ -54,8 +51,9 @@ fun SaintCard(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Medallion(saint.initial)
+            Medallion(initial = saint.initial.toString(), size = 42.dp)
             Spacer(Modifier.width(13.dp))
+
             Column(Modifier.weight(1f)) {
                 if (!overline.isNullOrBlank()) {
                     Text(
@@ -66,34 +64,46 @@ fun SaintCard(
                     Spacer(Modifier.height(4.dp))
                 }
                 Text(
-                    saint.display,
+                    saint.name,
                     style = MaterialTheme.typography.titleLarge,
                     color = c.text,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                val under = listOfNotNull(
+                val second = listOfNotNull(
                     saint.feastText().ifBlank { null },
-                    saint.era.ifBlank { null },
+                    saint.epithet.ifBlank { null },
                 ).joinToString("  \u00B7  ")
-                if (under.isNotBlank()) {
+                if (second.isNotBlank()) {
                     Spacer(Modifier.height(4.dp))
-                    Text(under, style = MaterialTheme.typography.bodySmall, color = c.faint)
+                    Text(
+                        second,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.faint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
+
             if (bookmarked) {
                 Spacer(Modifier.width(10.dp))
-                Icon(
-                    Icons.Filled.Bookmark, null, tint = c.gold,
-                    modifier = Modifier.size(17.dp),
+                Box(
+                    Modifier
+                        .size(7.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(c.gold),
                 )
             }
         }
     }
 }
 
+/** Where you left off. The gold rule under the name is how far you read. */
 @Composable
 fun ContinueCard(saint: Saint, progress: Float, onClick: () -> Unit) {
     val c = Syn.colors
-    val shown by animFloat(progress.coerceIn(0f, 1f), Motion.size())
+    val p = progress.coerceIn(0f, 1f)
 
     Pressable(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -103,28 +113,42 @@ fun ContinueCard(saint: Saint, progress: Float, onClick: () -> Unit) {
                 .background(c.surface)
                 .padding(16.dp),
         ) {
-            Text("CONTINUE", style = MaterialTheme.typography.labelSmall, color = c.goldDim)
+            Text(
+                "CONTINUE READING",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.goldDim,
+            )
             Spacer(Modifier.height(9.dp))
-            Text(saint.display, style = MaterialTheme.typography.titleLarge, color = c.text)
+            Text(saint.name, style = MaterialTheme.typography.titleLarge, color = c.text)
+            if (saint.epithet.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    saint.epithet,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.faint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.height(13.dp))
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(3.dp)
-                    .clip(CircleShape)
-                    .background(c.raised),
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(c.rule),
             ) {
                 Box(
                     Modifier
-                        .fillMaxWidth(shown)
+                        .fillMaxWidth(if (p < 0.02f) 0.02f else p)
                         .height(3.dp)
-                        .clip(CircleShape)
+                        .clip(RoundedCornerShape(2.dp))
                         .background(c.gold),
                 )
             }
             Spacer(Modifier.height(7.dp))
             Text(
-                (shown * 100).toInt().toString() + "% read",
+                (p * 100f).toInt().toString() + "% read",
                 style = MaterialTheme.typography.labelSmall,
                 color = c.faint,
             )
@@ -133,16 +157,14 @@ fun ContinueCard(saint: Saint, progress: Float, onClick: () -> Unit) {
 }
 
 /**
- * One saying, fixed for the day. Tapping copies it with the attribution -
- * it does not shuffle, because a daily saying that can be re-rolled is not a
- * daily saying.
+ * The saying of the day. It does not change when tapped - tapping copies it,
+ * with the attribution, and says so for a moment.
  */
 @Composable
 fun QuoteCard(text: String, by: String, copied: Boolean, onCopy: () -> Unit) {
     val c = Syn.colors
-    val hint by animFloat(if (copied) 1f else 0f, Motion.fade())
 
-    Pressable(onClick = onCopy, modifier = Modifier.fillMaxWidth(), down = 0.985f) {
+    Pressable(onClick = onCopy, modifier = Modifier.fillMaxWidth(), down = 0.99f) {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -151,46 +173,39 @@ fun QuoteCard(text: String, by: String, copied: Boolean, onCopy: () -> Unit) {
                 .border(1.dp, c.rule, RoundedCornerShape(16.dp))
                 .padding(20.dp),
         ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "A SAYING FOR TODAY",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = c.gold,
-                )
-                Icon(
-                    Icons.Outlined.ContentCopy, "Copy", tint = c.faint,
-                    modifier = Modifier.size(15.dp),
-                )
-            }
-            Spacer(Modifier.height(14.dp))
             Text(
                 "\u201C" + text.trim() + "\u201D",
                 style = MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic),
                 color = c.text,
             )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "\u2014 " + by,
-                style = MaterialTheme.typography.labelLarge,
-                color = c.goldDim,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                if (copied) "Copied." else "Tap to copy",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (copied) c.gold.copy(alpha = 0.4f + 0.6f * hint) else c.faint,
-            )
+            Spacer(Modifier.height(14.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "\u2014 " + by,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = c.goldDim,
+                )
+                Text(
+                    if (copied) "Copied" else "Tap to copy",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (copied) c.gold else c.faint,
+                )
+            }
         }
     }
 }
 
 /**
- * The morning card. Everything a fasting day actually needs to say, and a
- * severity stripe down the edge so it can be read at a glance.
+ * Today's fast, with the date on it.
+ *
+ * The stripe down the left is the severity, so the card can be read at a
+ * glance from across the room: nothing, dairy, fish, oil, xerophagy, strict.
+ * What may be eaten and what may not are lists in the model, and are set as
+ * lists here.
  */
 @Composable
 fun FastCard(
@@ -201,100 +216,129 @@ fun FastCard(
     onClick: () -> Unit,
 ) {
     val c = Syn.colors
-    val accent = fastColor(rule.level)
+    val tone = fastColor(rule.level)
 
-    Pressable(onClick = onClick, modifier = Modifier.fillMaxWidth(), down = 0.985f) {
+    Pressable(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(c.surface),
         ) {
-            Box(Modifier.width(4.dp).fillMaxHeight().background(accent))
-            Column(Modifier.padding(18.dp)) {
+            Box(
+                Modifier
+                    .width(4.dp)
+                    .height(intrinsicHeightGuess)
+                    .background(tone),
+            )
+            Column(Modifier.weight(1f).padding(17.dp)) {
+
                 Text(
                     civilLine.uppercase(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = c.gold,
+                    color = c.goldDim,
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(rule.label, style = MaterialTheme.typography.headlineSmall, color = c.text)
-
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    listOfNotNull(
-                        churchLine.ifBlank { null },
-                        season.ifBlank { null },
-                    ).joinToString("  \u00B7  "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.faint,
-                )
+                Text(churchLine, style = MaterialTheme.typography.bodySmall, color = c.faint)
+
+                Spacer(Modifier.height(13.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FastDot(rule.level, size = 9.dp)
+                    Spacer(Modifier.width(9.dp))
+                    Text(
+                        rule.label,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = c.text,
+                    )
+                }
+
+                if (season.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(season, style = MaterialTheme.typography.bodySmall, color = c.dim)
+                }
 
                 if (rule.detail.isNotBlank()) {
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(10.dp))
                     Text(rule.detail, style = MaterialTheme.typography.bodyMedium, color = c.dim)
                 }
 
-                if (rule.eat.isNotBlank() || rule.avoid.isNotBlank()) {
+                if (rule.eat.isNotEmpty() || rule.avoid.isNotEmpty()) {
                     Spacer(Modifier.height(14.dp))
-                    HairRule()
-                    Spacer(Modifier.height(14.dp))
-                    if (rule.eat.isNotBlank()) {
-                        FastLine("EAT", rule.eat, accent)
-                    }
-                    if (rule.avoid.isNotBlank()) {
-                        if (rule.eat.isNotBlank()) Spacer(Modifier.height(10.dp))
-                        FastLine("AVOID", rule.avoid, c.blood)
-                    }
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(c.rule))
+                    Spacer(Modifier.height(13.dp))
                 }
+
+                if (rule.eat.isNotEmpty()) {
+                    FastLine("EAT", rule.eat, c.gold)
+                }
+                if (rule.eat.isNotEmpty() && rule.avoid.isNotEmpty()) {
+                    Spacer(Modifier.height(9.dp))
+                }
+                if (rule.avoid.isNotEmpty()) {
+                    FastLine("AVOID", rule.avoid, c.blood)
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Open the calendar",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.faint,
+                )
             }
         }
     }
 }
 
+/** The stripe has no content of its own, so it borrows a sensible height. */
+private val intrinsicHeightGuess = 1000.dp
+
 @Composable
-private fun FastLine(label: String, body: String, dot: androidx.compose.ui.graphics.Color) {
+private fun FastLine(label: String, items: List<String>, tone: androidx.compose.ui.graphics.Color) {
     val c = Syn.colors
-    Row(verticalAlignment = Alignment.Top) {
-        Box(
-            Modifier
-                .padding(top = 6.dp)
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(dot),
+    Row(Modifier.fillMaxWidth()) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = tone,
+            modifier = Modifier.width(52.dp),
         )
-        Spacer(Modifier.width(10.dp))
-        Column {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = c.faint)
-            Spacer(Modifier.height(3.dp))
-            Text(body, style = MaterialTheme.typography.bodyMedium, color = c.text)
-        }
+        Text(
+            items.joinToString(" \u00B7 "),
+            style = MaterialTheme.typography.bodySmall,
+            color = c.dim,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
+/** A feast, in the calendar and under today's date. */
 @Composable
 fun FeastCard(feast: Feast, modifier: Modifier = Modifier) {
     val c = Syn.colors
+
     Column(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(13.dp))
             .background(if (feast.great) c.raised else c.surface)
-            .border(
-                1.dp,
-                if (feast.great) c.goldDim else c.rule,
-                RoundedCornerShape(14.dp),
+            .then(
+                if (feast.great) Modifier.border(1.dp, c.goldDim, RoundedCornerShape(13.dp))
+                else Modifier
             )
-            .padding(16.dp),
+            .padding(15.dp),
     ) {
         if (feast.great) {
-            Text("A GREAT FEAST", style = MaterialTheme.typography.labelSmall, color = c.gold)
-            Spacer(Modifier.height(8.dp))
+            Text(
+                "GREAT FEAST",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.gold,
+            )
+            Spacer(Modifier.height(7.dp))
         }
         Text(
             feast.name,
             style = MaterialTheme.typography.titleLarge.copy(
-                fontWeight = if (feast.great) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = if (feast.great) FontWeight.SemiBold else FontWeight.Medium,
             ),
             color = c.text,
         )

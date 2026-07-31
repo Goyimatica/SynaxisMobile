@@ -30,11 +30,11 @@ data class Doc(
 /**
  * Lives and pictures, fetched once and kept on the disk as plain JSON.
  *
- * On the pictures: OrthodoxWiki does not run the PageImages extension, so
- * prop=pageimages returns nothing there no matter how the query is phrased.
- * The only way to get an icon off that wiki is prop=images, which lists the
- * files a page uses, and then imageinfo on the file title. Wikipedia does run
- * PageImages, so it gets the short query. Both need a real User-Agent.
+ * Two things this repository has learned the hard way. OrthodoxWiki does not
+ * run the PageImages extension, so a picture can only be had from it by
+ * listing the page's files and then asking for one file's URL. And its
+ * articles put `== Sources ==` in the middle rather than at the end, so
+ * cutting the text at the first apparatus heading throws the writings away.
  */
 object WikiRepo {
 
@@ -68,43 +68,61 @@ object WikiRepo {
     }
 
     /**
-     * The life, from the disk if we have it. If we have the text but no
-     * picture - which is every life downloaded by an earlier build - only the
-     * picture is fetched, and the cache entry is repaired in place.
+     * The life, from the disk if we have it.
+     *
+     * Two repairs happen without a full refetch: a life with text but no
+     * picture gets the picture, and a life that was cut short by the old
+     * `tidy` - anything under six hundred characters that came from a wiki
+     * that is usually longer - is fetched again once.
      */
     suspend fun doc(saint: Saint, force: Boolean = false): Doc? = withContext(Dispatchers.IO) {
         val old = if (force) null else cached(saint.id)
 
-        if (old != null && !old.missing && old.full.isNotBlank()) {
+        if (old != null && !old.missing && old.full.length >= 600) {
             if (old.image.isNotBlank()) return@withContext old
-            val found = picture(saint, old.fromOrthodoxWiki)
-                ?: return@withContext old
+            val found = picture(saint, old.fromOrthodoxWiki) ?: return@withContext old
             val repaired = old.copy(image = found.first, imageFull = found.second, at = now())
             save(repaired)
             return@withContext repaired
         }
 
         val fresh = fetch(saint)
-        if (fresh != null) save(fresh)
-        fresh
+        if (fresh != null && (fresh.full.length >= (old?.full?.length ?: 0))) {
+            save(fresh)
+            return@withContext fresh
+        }
+        old ?: fresh
     }
 
     // ---------------------------------------------------------------- fetch
 
+    /**
+     * Both wikis are asked. OrthodoxWiki is the life; Wikipedia is the
+     * biography. The Orthodox text is preferred unless the other is more than
+     * half as long again, in which case the longer one is the one with the
+     * works in it.
+     */
     private fun fetch(saint: Saint): Doc {
         val ow = saint.owTitle.ifBlank { saint.name }
         val wp = saint.wikiTitle.ifBlank { saint.name }
 
-        var body = if (ow.isNotBlank()) extract(OW_API, ow) else null
-        var fromOw = body != null
-        if (body == null && wp.isNotBlank()) body = extract(WP_API, wp)
+        val fromOw = if (ow.isBlank()) null else body(OW_API, ow)
+        val fromWp = if (wp.isBlank()) null else body(WP_API, wp)
 
-        if (body.isNullOrBlank()) {
+        val useOw = when {
+            fromOw == null -> false
+            fromWp == null -> true
+            else -> fromWp.length <= (fromOw.length * 3) / 2
+        }
+
+        val chosen = (if (useOw) fromOw else fromWp) ?: fromOw ?: fromWp
+
+        if (chosen.isNullOrBlank()) {
             return Doc(id = saint.id, title = saint.name, missing = true, at = now())
         }
 
-        val text = tidy(body)
-        val pic = picture(saint, fromOw)
+        val text = tidy(chosen)
+        val pic = picture(saint, useOw)
 
         return Doc(
             id = saint.id,
@@ -113,17 +131,29 @@ object WikiRepo {
             full = text,
             image = pic?.first.orEmpty(),
             imageFull = pic?.second.orEmpty(),
-            wikiUrl = if (fromOw) OW_PAGE + enc(ow) else WP_PAGE + enc(wp),
-            fromOrthodoxWiki = fromOw,
+            wikiUrl = if (useOw) OW_PAGE + enc(ow) else WP_PAGE + enc(wp),
+            fromOrthodoxWiki = useOw,
             missing = false,
             at = now(),
         )
     }
 
+    /** TextExtracts first; the raw wikitext if that comes back thin. */
+    private fun body(api: String, title: String): String? {
+        extract(api, title)?.let { if (it.length >= 400) return it }
+        val raw = wikitext(api, title)
+        val plain = extract(api, title)
+        return when {
+            raw != null && plain != null -> if (raw.length > plain.length) raw else plain
+            raw != null -> raw
+            else -> plain
+        }
+    }
+
     private fun extract(api: String, title: String): String? {
         val j = http(
             api + "?action=query&format=json&formatversion=2&redirects=1" +
-                "&prop=extracts&explaintext=1&exsectionformat=plain&titles=" + enc(title)
+                "&prop=extracts&explaintext=1&titles=" + enc(title)
         ) ?: return null
         val page = firstPage(j) ?: return null
         if (page.optBoolean("missing", false)) return null
@@ -131,11 +161,56 @@ object WikiRepo {
         return if (e.trim().length < 120) null else e
     }
 
+    /**
+     * The page as it was typed. Templates, files and tables are thrown away,
+     * links are unwrapped, and the heading markers are kept - the reader sets
+     * them as headings.
+     */
+    private fun wikitext(api: String, title: String): String? {
+        val j = http(
+            api + "?action=query&format=json&formatversion=2&redirects=1" +
+                "&prop=revisions&rvprop=content&rvslots=main&titles=" + enc(title)
+        ) ?: return null
+        val page = firstPage(j) ?: return null
+        if (page.optBoolean("missing", false)) return null
+        val raw = page.optJSONArray("revisions")
+            ?.optJSONObject(0)
+            ?.optJSONObject("slots")
+            ?.optJSONObject("main")
+            ?.optString("content", "")
+            .orEmpty()
+        if (raw.isBlank()) return null
+
+        var t = raw
+        // Templates and tables, innermost first.
+        repeat(6) { t = t.replace(Regex("\\{\\{[^{}]*\\}\\}"), " ") }
+        t = t.replace(Regex("(?s)\\{\\|.*?\\|\\}"), " ")
+        t = t.replace(Regex("(?s)<ref[^>]*>.*?</ref>"), "")
+        t = t.replace(Regex("<ref[^>]*/>"), "")
+        t = t.replace(Regex("(?s)<!--.*?-->"), "")
+        t = t.replace(Regex("(?i)\\[\\[(File|Image|Category):[^\\]]*\\]\\]"), "")
+        // [[target|shown]] and [[target]]
+        t = t.replace(Regex("\\[\\[[^\\]|]*\\|([^\\]]*)\\]\\]"), "$1")
+        t = t.replace(Regex("\\[\\[([^\\]]*)\\]\\]"), "$1")
+        t = t.replace(Regex("\\[https?://\\S+ ([^\\]]*)\\]"), "$1")
+        t = t.replace(Regex("\\[https?://\\S+\\]"), "")
+        t = t.replace(Regex("<[^>]+>"), "")
+        t = t.replace("'''", "").replace("''", "")
+        t = t.replace(Regex("(?m)^[*#:;]+\\s*"), "")
+        t = t.replace("&nbsp;", " ").replace("&amp;", "&").replace("&quot;", "\"")
+
+        val cleaned = t.lines().joinToString("\n") { it.trim() }
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+
+        return if (cleaned.length < 200) null else cleaned
+    }
+
     // -------------------------------------------------------------- picture
 
     /** Everything a wiki puts on a page that is not an icon of the saint. */
     private val JUNK = listOf(
-        "logo", "icon", "wiki", "edit", "stub", "padlock", "ambox", "disambig",
+        "logo", "icon.png", "wiki", "edit", "stub", "padlock", "ambox", "disambig",
         "question", "commons", "flag", "coat of arms", "map", "placeholder",
         "symbol", "button", "banner", "seal of",
     )
@@ -195,30 +270,50 @@ object WikiRepo {
 
     // ----------------------------------------------------------------- text
 
-    /** Cut the apparatus off the end and thin out the blank lines. */
+    /**
+     * Take the apparatus off the end and nothing off the middle.
+     *
+     * The old version stopped at the first heading it recognised, which on
+     * OrthodoxWiki is often `Sources` sitting halfway down with the writings
+     * below it. This one finds the last apparatus heading that has nothing but
+     * apparatus after it, and cuts there.
+     */
     private fun tidy(raw: String): String {
-        val stop = listOf(
-            "References", "External links", "See also", "Sources", "Notes",
-            "Further reading", "Bibliography", "Succession box",
+        val apparatus = listOf(
+            "references", "external links", "see also", "notes", "sources",
+            "further reading", "bibliography", "succession box", "navigation",
         )
-        val kept = ArrayList<String>()
-        for (line in raw.lines()) {
-            val t = line.trim()
-            if (t.startsWith("==")) {
-                val heading = t.trim('=', ' ')
-                if (stop.any { heading.equals(it, ignoreCase = true) }) break
-                kept.add(heading)
-                continue
+
+        val lines = raw.lines().map { it.trim() }
+
+        // Walk backwards; keep dropping trailing apparatus sections.
+        var cut = lines.size
+        var i = lines.size - 1
+        while (i >= 0) {
+            val l = lines[i]
+            if (l.startsWith("==") && l.endsWith("=")) {
+                val head = l.trim('=', ' ').lowercase()
+                if (apparatus.any { head == it }) {
+                    cut = i
+                    i--
+                    continue
+                }
+                break
             }
-            kept.add(t)
+            i--
         }
+
+        val kept = lines.subList(0, cut.coerceAtLeast(1))
         return kept.joinToString("\n")
             .replace(Regex("\n{3,}"), "\n\n")
             .trim()
     }
 
+    /** The opening, for the In brief card. Headings are never part of it. */
     private fun opening(text: String): String {
-        val paras = text.split("\n\n").map { it.trim() }.filter { it.length > 40 }
+        val paras = text.split("\n\n")
+            .map { it.trim() }
+            .filter { it.length > 40 && !it.startsWith("==") }
         if (paras.isEmpty()) return text.take(420)
         val first = paras[0]
         if (first.length >= 240 || paras.size == 1) return first
@@ -272,10 +367,7 @@ object WikiRepo {
         null
     }
 
-    /**
-     * Every life, six at a time. Six is polite to the wiki and still gets
-     * through the whole index in a couple of minutes on a decent connection.
-     */
+    /** Every life, six at a time. */
     suspend fun syncAll(saints: List<Saint>, onProgress: (Int, Int) -> Unit) {
         val total = saints.size
         val counted = AtomicInteger(0)
