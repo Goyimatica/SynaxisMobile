@@ -43,25 +43,22 @@ object WikiRepo {
     const val AGENT = Images.AGENT
 
     private const val TAG = "SynaxisImages"
-    private const val THUMB = 700
 
-    /** How many lives are fetched at once during a sync. */
+    /* V7.1: 1600px. Wikimedia renders thumbnails up to about 2000px happily;
+       1600 is sharper than any phone panel and still a fraction of the
+       original file, which for a scanned icon can be twenty megabytes. */
+    private const val THUMB = 1600
+
     private const val PARALLEL = 12
+    private const val WEEK = 7L * 24L * 60L * 60L * 1000L
 
     private var dir: File? = null
 
-    /* Concurrent because PARALLEL workers write to it at the same time. */
     private val mem = ConcurrentHashMap<String, Doc>(64)
     private val diskLock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /*
-     * saint id -> thumbnail URL, readable from any composable with no work.
-     *
-     * A snapshot state map, so a card drawn before its picture existed
-     * re-draws itself the moment the sync writes one. This is what puts
-     * portraits on every list in the app rather than only in the reader.
-     */
+    /** saint id -> picture URL, readable from any composable for free. */
     val thumbs = mutableStateMapOf<String, String>()
 
     fun init(context: Context) {
@@ -70,8 +67,6 @@ object WikiRepo {
         scope.launch { indexThumbs() }
     }
 
-    /* One pass over the cached lives, reading only the picture field. Runs
-       off the main thread; a few hundred small files take a few milliseconds. */
     private fun indexThumbs() {
         val files = dir?.listFiles { f -> f.name.endsWith(".json") } ?: return
         files.forEach { f ->
@@ -113,6 +108,27 @@ object WikiRepo {
         }
     }
 
+    /**
+     * Which lives the startup sync actually has to fetch.
+     *
+     * A saint with no picture anywhere on either wiki would otherwise be
+     * hunted again on every single launch, so a fruitless search is only
+     * repeated once a week.
+     */
+    suspend fun pending(saints: List<Saint>): List<Saint> = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        saints.filter { s ->
+            val d = cached(s.id)
+            when {
+                d == null -> true
+                d.missing -> now - d.at > WEEK
+                d.full.length < 600 -> true
+                d.image.isBlank() -> now - d.at > WEEK
+                else -> false
+            }
+        }
+    }
+
     private suspend fun save(doc: Doc) = diskLock.withLock {
         mem[doc.id] = doc
         if (doc.image.isNotBlank()) thumbs[doc.id] = doc.image
@@ -151,10 +167,7 @@ object WikiRepo {
         }
     }
 
-    /* ---- http ------------------------------------------------------------
-     * One shared OkHttp client: connection pooling, HTTP/2, keep-alive, and
-     * the User-Agent Wikimedia insists on, added by the interceptor.
-     */
+    /* ---- http ------------------------------------------------------------ */
 
     private fun get(url: String): String? = runCatching {
         val request = Request.Builder()
@@ -191,9 +204,6 @@ object WikiRepo {
         "further reading", "bibliography", "succession box", "navigation",
     )
 
-    /* Walk BACKWARDS from the end, dropping only trailing apparatus sections.
-       OrthodoxWiki often puts == Sources == above == Works ==, so cutting at
-       the first match throws away the writings we most want to keep. */
     private fun tidy(raw: String): String {
         val lines = raw.replace("\r\n", "\n").split("\n").toMutableList()
         var cut = lines.size
@@ -259,7 +269,6 @@ object WikiRepo {
         return JUNK.none { n.contains(it) }
     }
 
-    /* pageimages: the picture the wiki itself considers to be the page's */
     private fun pageImage(base: String, title: String): Pair<String, String>? {
         val o = api(
             base,
@@ -274,7 +283,6 @@ object WikiRepo {
         return if (full.isBlank()) null else Pair(small, full)
     }
 
-    /* every file embedded in the page, filtered, then resolved to real URLs */
     private fun embeddedImage(base: String, title: String): Pair<String, String>? {
         val o = api(base, "action=query&prop=images&imlimit=40&redirects=1&titles=" + enc(title))
         val arr = firstPage(o)?.optJSONArray("images") ?: return null
@@ -294,13 +302,12 @@ object WikiRepo {
                 "&titles=" + enc(fileTitle),
         )
         val info = firstPage(o)?.optJSONArray("imageinfo")?.optJSONObject(0) ?: return null
-        if (info.optInt("size", 0) in 1 until 8000) return null      // a button, not a portrait
+        if (info.optInt("size", 0) in 1 until 8000) return null
         val full = info.optString("url").orEmpty()
         val thumb = info.optString("thumburl").ifBlank { full }
         return if (full.isBlank()) null else Pair(thumb, full)
     }
 
-    /* last resort: ask Commons for a file named after the saint */
     private fun commonsImage(name: String): Pair<String, String>? {
         val o = api(
             COMMONS_API,
@@ -351,17 +358,12 @@ object WikiRepo {
             }
         }
 
-        /* OrthodoxWiki is the Orthodox source and wins unless Wikipedia has
-           more than half again as much text, which usually means the
-           OrthodoxWiki article is a stub. */
         val useWp = fromOw.isBlank() || fromWp.length > (fromOw.length * 3) / 2
         val chosen = if (useWp) fromWp else fromOw
         val host = if (useWp) "https://en.wikipedia.org/wiki/" else "https://orthodoxwiki.org/"
         val link = host + enc(if (useWp) wp else ow)
         return Triple(tidy(chosen), !useWp, if (chosen.isBlank()) "" else link)
     }
-
-    /* ---- the one entry point ---------------------------------------------- */
 
     suspend fun doc(saint: Saint, force: Boolean = false): Doc? = withContext(Dispatchers.IO) {
         val id = saint.id
@@ -371,7 +373,6 @@ object WikiRepo {
         val goodPicture = !old?.image.isNullOrBlank()
         if (!force && old != null && goodText && goodPicture) return@withContext old
 
-        /* repair: keep whatever is already good, only re-ask for what is not */
         val body: String
         val fromOw: Boolean
         val url: String
@@ -409,12 +410,7 @@ object WikiRepo {
         fresh
     }
 
-    /* ---- the whole synaxarion ---------------------------------------------
-     * Twelve in flight, always. No batch barrier: the instant one saint is
-     * finished the next one starts, so a single slow article cannot hold up
-     * eleven others. Progress is an atomic counter because the callback is
-     * reached from twelve threads.
-     */
+    /* Twelve in flight, always, with no batch barrier. */
     suspend fun syncAll(saints: List<Saint>, onProgress: (Int, Int) -> Unit) {
         val total = saints.size
         if (total == 0) {

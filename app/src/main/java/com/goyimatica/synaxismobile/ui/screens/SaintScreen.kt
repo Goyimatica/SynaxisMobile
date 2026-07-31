@@ -216,9 +216,12 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                 color = c.faint,
             )
 
-            /* ---- the icon ---- */
-            val image = d?.image
-            if (!image.isNullOrBlank()) {
+            /* ---- the icon ----
+               V7.1: the reader gets the original file, not the thumbnail.
+               Coil downsamples it to the frame while decoding, so the memory
+               cost is the same and the detail is not. */
+            val image = d?.imageFull.orEmpty().ifBlank { d?.image.orEmpty() }
+            if (image.isNotBlank()) {
                 Spacer(Modifier.height(22.dp))
                 IconFrame(url = image, label = saint.name)
             }

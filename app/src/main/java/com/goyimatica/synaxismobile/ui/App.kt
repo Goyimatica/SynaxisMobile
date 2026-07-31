@@ -43,8 +43,10 @@ import androidx.navigation.navArgument
 import com.goyimatica.synaxismobile.data.QuotesRepo
 import com.goyimatica.synaxismobile.data.SaintsRepo
 import com.goyimatica.synaxismobile.data.Store
+import com.goyimatica.synaxismobile.data.SyncGate
 import com.goyimatica.synaxismobile.data.WikiRepo
 import com.goyimatica.synaxismobile.ui.components.OrthodoxCross
+import com.goyimatica.synaxismobile.ui.components.SyncDialog
 import com.goyimatica.synaxismobile.ui.screens.CalendarScreen
 import com.goyimatica.synaxismobile.ui.screens.LibraryScreen
 import com.goyimatica.synaxismobile.ui.screens.LivesScreen
@@ -69,11 +71,21 @@ fun SynaxisApp() {
             SaintsRepo.load(context)
             QuotesRepo.load(context)
             ready = true
+
+            /*
+             * The launch download. runOnce is guarded by a plain field on the
+             * singleton, so this fires on a cold start and is a no-op on every
+             * recomposition afterwards. Add lives to saints.json, ship a build,
+             * and the next launch fetches exactly the new ones.
+             */
+            SyncGate.runOnce(SaintsRepo.all())
         }
 
         Surface(Modifier.fillMaxSize(), color = Syn.colors.bg) {
             if (ready) Shell() else Splash()
         }
+
+        if (ready) SyncDialog()
     }
 }
 
@@ -96,6 +108,23 @@ private fun Shell() {
     val current = entry?.destination?.route ?: Routes.TODAY
     val onTab = Routes.TABS.any { it.route == current }
 
+    /*
+     * One way, and only one way, to move between tabs.
+     *
+     * The calendar chevron on the homepage used to call nav.navigate(CALENDAR)
+     * bare, which pushed the calendar on top of Today inside the same tab.
+     * The bar then showed Today as current while the back stack said calendar,
+     * and tapping Today did nothing because the guard thought you were already
+     * there. Both callers now go through this.
+     */
+    val switchTab: (String) -> Unit = { route ->
+        nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     val openSaint: (String) -> Unit = { id -> nav.navigate(Routes.saint(id)) }
     val openSettings: () -> Unit = { nav.navigate(Routes.SETTINGS) }
 
@@ -104,13 +133,25 @@ private fun Shell() {
             NavHost(
                 navController = nav,
                 startDestination = Routes.TODAY,
-                enterTransition = { fadeIn(tween(180)) },
-                exitTransition = { fadeOut(tween(140)) },
+                /* Tabs: a short fade with twenty pixels of drift. Translation
+                   and alpha are both draw-phase, so this is free at 120Hz. */
+                enterTransition = {
+                    fadeIn(tween(220)) + slideInHorizontally(tween(240)) { it / 20 }
+                },
+                exitTransition = {
+                    fadeOut(tween(170)) + slideOutHorizontally(tween(240)) { -it / 20 }
+                },
+                popEnterTransition = {
+                    fadeIn(tween(220)) + slideInHorizontally(tween(240)) { -it / 20 }
+                },
+                popExitTransition = {
+                    fadeOut(tween(170)) + slideOutHorizontally(tween(240)) { it / 20 }
+                },
             ) {
                 composable(Routes.TODAY) {
                     TodayScreen(
                         onOpenSaint = openSaint,
-                        onOpenCalendar = { nav.navigate(Routes.CALENDAR) },
+                        onOpenCalendar = { switchTab(Routes.CALENDAR) },
                         onOpenSettings = openSettings,
                     )
                 }
@@ -131,10 +172,10 @@ private fun Shell() {
                     route = Routes.SAINT,
                     arguments = listOf(navArgument("id") { type = NavType.StringType }),
                     enterTransition = {
-                        slideInHorizontally(tween(260)) { it / 6 } + fadeIn(tween(200))
+                        slideInHorizontally(tween(280)) { it / 5 } + fadeIn(tween(200))
                     },
                     popExitTransition = {
-                        slideOutHorizontally(tween(220)) { it / 6 } + fadeOut(tween(160))
+                        slideOutHorizontally(tween(240)) { it / 5 } + fadeOut(tween(160))
                     },
                 ) { backStack ->
                     SaintScreen(
@@ -146,10 +187,10 @@ private fun Shell() {
                 composable(
                     route = Routes.SETTINGS,
                     enterTransition = {
-                        slideInHorizontally(tween(260)) { it / 6 } + fadeIn(tween(200))
+                        slideInHorizontally(tween(280)) { it / 5 } + fadeIn(tween(200))
                     },
                     popExitTransition = {
-                        slideOutHorizontally(tween(220)) { it / 6 } + fadeOut(tween(160))
+                        slideOutHorizontally(tween(240)) { it / 5 } + fadeOut(tween(160))
                     },
                 ) {
                     SettingsScreen(onBack = { nav.popBackStack() })
@@ -158,15 +199,7 @@ private fun Shell() {
         }
 
         if (onTab) {
-            BottomBar(current = current, onSelect = { route ->
-                if (route != current) {
-                    nav.navigate(route) {
-                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                }
-            })
+            BottomBar(current = current, onSelect = switchTab)
         }
     }
 }

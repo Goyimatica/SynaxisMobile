@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,6 +75,17 @@ fun OrthodoxCross(
 
 /* ---- the header --------------------------------------------------------- */
 
+/**
+ * The top of every tab screen.
+ *
+ * V7.1: this takes the status bar inset itself. Nothing in the shell insets
+ * the tab screens - SaintScreen and SettingsScreen apply their own - so
+ * putting it here is what stops the overline from hiding under the clock,
+ * and putting it *only* here is what stops the reader from being padded
+ * twice. The horizontal padding is deliberately small: every list on top of
+ * this uses eighteen dp of content padding, and the title has to line up
+ * with the cards, not float two dp inside them.
+ */
 @Composable
 fun ScreenHeader(
     overline: String,
@@ -86,7 +98,8 @@ fun ScreenHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 12.dp, top = 14.dp, bottom = 10.dp),
+            .statusBarsPadding()
+            .padding(start = 2.dp, end = 0.dp, top = 20.dp, bottom = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f)) {
@@ -96,7 +109,7 @@ fun ScreenHeader(
                         style = MaterialTheme.typography.labelMedium,
                         color = c.gold,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(7.dp))
                 }
                 Text(
                     text = title,
@@ -106,7 +119,7 @@ fun ScreenHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (!subtitle.isNullOrBlank()) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodyMedium,
@@ -142,7 +155,7 @@ fun ScreenHeader(
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
         HairRule()
     }
 }

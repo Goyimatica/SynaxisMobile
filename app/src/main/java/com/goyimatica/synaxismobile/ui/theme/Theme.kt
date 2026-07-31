@@ -3,6 +3,7 @@ package com.goyimatica.synaxismobile.ui.theme
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Color as AndroidColor
 import android.os.Build
 import android.view.Display
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,18 +23,15 @@ import androidx.core.view.WindowCompat
 import coil3.compose.setSingletonImageLoaderFactory
 import com.goyimatica.synaxismobile.data.Images
 
-/* Reading settings that every screen may need. */
 data class ReadingPrefs(
     val face: ReadingFace = ReadingFace.NOTO,
-    val sizeStep: Int = 3,          // 1..5
-    val leadStep: Int = 2,          // 1..3
-    val weight: Int = 600,          // 400, 500 or 600
+    val sizeStep: Int = 3,
+    val leadStep: Int = 2,
+    val weight: Int = 600,
     val justify: Boolean = false,
     val dropCap: Boolean = true,
-    val animations: Float = 1f,     // 1, .55 or 0
+    val animations: Float = 1f,
 ) {
-    /* V7: every step is bigger. A life is read at arm's length on a phone,
-       not at desk distance, and the old scale started too small. */
     val fontSizeSp: Float
         get() = when (sizeStep) {
             1 -> 16.5f; 2 -> 17.75f; 3 -> 19f; 4 -> 20.5f; else -> 22.5f
@@ -55,10 +53,6 @@ object Syn {
         @Composable get() = LocalReadingPrefs.current
 }
 
-/* ---- the display mode ---------------------------------------------------
- * Android hands out 60Hz by default. Ask for the fastest mode the panel has
- * at the resolution we are already running, and ask again if it changes.
- */
 private fun Context.activity(): Activity? {
     var c: Context? = this
     while (c is ContextWrapper) {
@@ -107,8 +101,6 @@ fun SynaxisTheme(
     val resolved = palette ?: if (isSystemInDarkTheme()) Palette.NIGHT else Palette.PARCHMENT
     val c = colorsFor(resolved)
 
-    /* every AsyncImage in the app goes through our loader: real User-Agent,
-       real disk cache, one pooled connection */
     setSingletonImageLoaderFactory { ctx -> Images.loader(ctx) }
 
     MaxRefreshRate()
@@ -140,6 +132,24 @@ fun SynaxisTheme(
         val context = LocalContext.current
         SideEffect {
             val window = context.activity()?.window ?: return@SideEffect
+
+            /*
+             * V7.1 - the navigation bar.
+             *
+             * enableEdgeToEdge installs a contrast scrim behind the gesture
+             * pill, picked from the system's light/dark setting rather than
+             * from our palette, which is why the bottom bar never matched the
+             * app while the status bar always did. Both bars are made truly
+             * transparent and the scrim is switched off, so what shows through
+             * is the surface our own bottom bar already draws.
+             */
+            window.statusBarColor = AndroidColor.TRANSPARENT
+            window.navigationBarColor = AndroidColor.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window.isStatusBarContrastEnforced = false
+                window.isNavigationBarContrastEnforced = false
+            }
+
             val controller = WindowCompat.getInsetsController(window, view)
             controller.isAppearanceLightStatusBars = !c.isDark
             controller.isAppearanceLightNavigationBars = !c.isDark
@@ -158,6 +168,5 @@ fun SynaxisTheme(
     }
 }
 
-/* gold is light enough that near-black sits on it better than white */
 private fun onGold(c: SynaxisColors) =
     if (c.isDark) Color(0xFF14100E) else Color(0xFF1A1512)
