@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
-        <include domain="file" path="synaxis.json" />
-        <include domain="sharedpref" path="synaxis_prefs.xml" />
-        <exclude domain="file" path="docs/" />
+        <include domain="file" path="." />
+        <include domain="sharedpref" path="." />
+        <exclude domain="file" path="docs" />
     </cloud-backup>
+
     <device-transfer>
-        <include domain="file" path="synaxis.json" />
-        <include domain="sharedpref" path="synaxis_prefs.xml" />
+        <include domain="file" path="." />
+        <include domain="sharedpref" path="." />
     </device-transfer>
 </data-extraction-rules>
