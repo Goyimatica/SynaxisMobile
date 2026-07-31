@@ -2,18 +2,25 @@ package com.goyimatica.synaxismobile.data
 
 import android.content.Context
 import android.util.Log
+import androidx.compose.runtime.mutableStateMapOf
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 data class Doc(
     val id: String,
@@ -38,18 +45,49 @@ object WikiRepo {
     private const val TAG = "SynaxisImages"
     private const val THUMB = 700
 
+    /** How many lives are fetched at once during a sync. */
+    private const val PARALLEL = 12
+
     private var dir: File? = null
-    private val mem = HashMap<String, Doc>(64)
+
+    /* Concurrent because PARALLEL workers write to it at the same time. */
+    private val mem = ConcurrentHashMap<String, Doc>(64)
     private val diskLock = Mutex()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /*
+     * saint id -> thumbnail URL, readable from any composable with no work.
+     *
+     * A snapshot state map, so a card drawn before its picture existed
+     * re-draws itself the moment the sync writes one. This is what puts
+     * portraits on every list in the app rather than only in the reader.
+     */
+    val thumbs = mutableStateMapOf<String, String>()
 
     fun init(context: Context) {
         if (dir != null) return
         dir = File(context.cacheDir, "docs").apply { mkdirs() }
+        scope.launch { indexThumbs() }
+    }
+
+    /* One pass over the cached lives, reading only the picture field. Runs
+       off the main thread; a few hundred small files take a few milliseconds. */
+    private fun indexThumbs() {
+        val files = dir?.listFiles { f -> f.name.endsWith(".json") } ?: return
+        files.forEach { f ->
+            runCatching {
+                val o = JSONObject(f.readText())
+                val img = o.optString("image")
+                if (img.isNotBlank()) {
+                    thumbs[o.optString("id", f.nameWithoutExtension)] = img
+                }
+            }
+        }
     }
 
     /* ---- cache ---------------------------------------------------------- */
 
-    private fun fileFor(id: String): File? = dir?.let { File(it, "$id.json") }
+    private fun fileFor(id: String): File? = dir?.let { File(it, id + ".json") }
 
     fun cached(id: String): Doc? {
         mem[id]?.let { return it }
@@ -69,11 +107,15 @@ object WikiRepo {
                 missing = o.optBoolean("missing"),
                 at = o.optLong("at"),
             )
-        }.getOrNull()?.also { mem[id] = it }
+        }.getOrNull()?.also {
+            mem[id] = it
+            if (it.image.isNotBlank()) thumbs[id] = it.image
+        }
     }
 
     private suspend fun save(doc: Doc) = diskLock.withLock {
         mem[doc.id] = doc
+        if (doc.image.isNotBlank()) thumbs[doc.id] = doc.image
         val f = fileFor(doc.id) ?: return@withLock
         runCatching {
             val o = JSONObject()
@@ -104,38 +146,35 @@ object WikiRepo {
             diskLock.withLock {
                 dir?.listFiles()?.forEach { it.delete() }
                 mem.clear()
+                thumbs.clear()
             }
         }
     }
 
-    /* ---- http ----------------------------------------------------------- */
+    /* ---- http ------------------------------------------------------------
+     * One shared OkHttp client: connection pooling, HTTP/2, keep-alive, and
+     * the User-Agent Wikimedia insists on, added by the interceptor.
+     */
 
     private fun get(url: String): String? = runCatching {
-        val c = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 15000
-            readTimeout = 30000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", AGENT)
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Accept-Language", "en")
-        }
-        try {
-            if (c.responseCode !in 200..299) {
-                Log.i(TAG, "http ${c.responseCode} for $url")
+        val request = Request.Builder()
+            .url(url)
+            .header("Accept", "application/json")
+            .build()
+        Images.http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Log.i(TAG, "http " + response.code + " for " + url)
                 null
             } else {
-                c.inputStream.bufferedReader().use { it.readText() }
+                response.body?.string()
             }
-        } finally {
-            c.disconnect()
         }
     }.getOrNull()
 
     private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
     private fun api(base: String, query: String): JSONObject? {
-        val body = get("$base?format=json&formatversion=2&$query") ?: return null
+        val body = get(base + "?format=json&formatversion=2&" + query) ?: return null
         return runCatching { JSONObject(body) }.getOrNull()
     }
 
@@ -179,7 +218,7 @@ object WikiRepo {
     private fun extractOf(base: String, title: String): String? {
         val o = api(
             base,
-            "action=query&prop=extracts&explaintext=1&redirects=1&titles=${enc(title)}",
+            "action=query&prop=extracts&explaintext=1&redirects=1&titles=" + enc(title),
         )
         val text = firstPage(o)?.optString("extract").orEmpty()
         return text.ifBlank { null }
@@ -188,7 +227,7 @@ object WikiRepo {
     private fun wikitextOf(base: String, title: String): String? {
         val o = api(
             base,
-            "action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&titles=${enc(title)}",
+            "action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&titles=" + enc(title),
         )
         val rev = firstPage(o)?.optJSONArray("revisions")?.optJSONObject(0)
         val raw = rev?.optJSONObject("slots")?.optJSONObject("main")?.optString("content").orEmpty()
@@ -224,8 +263,8 @@ object WikiRepo {
     private fun pageImage(base: String, title: String): Pair<String, String>? {
         val o = api(
             base,
-            "action=query&prop=pageimages&piprop=original|thumbnail&pithumbsize=$THUMB" +
-                "&redirects=1&titles=${enc(title)}",
+            "action=query&prop=pageimages&piprop=original|thumbnail&pithumbsize=" + THUMB +
+                "&redirects=1&titles=" + enc(title),
         )
         val page = firstPage(o) ?: return null
         val original = page.optJSONObject("original")?.optString("source").orEmpty()
@@ -237,7 +276,7 @@ object WikiRepo {
 
     /* every file embedded in the page, filtered, then resolved to real URLs */
     private fun embeddedImage(base: String, title: String): Pair<String, String>? {
-        val o = api(base, "action=query&prop=images&imlimit=40&redirects=1&titles=${enc(title)}")
+        val o = api(base, "action=query&prop=images&imlimit=40&redirects=1&titles=" + enc(title))
         val arr = firstPage(o)?.optJSONArray("images") ?: return null
         for (i in 0 until arr.length()) {
             val name = arr.optJSONObject(i)?.optString("title").orEmpty()
@@ -251,10 +290,11 @@ object WikiRepo {
     private fun fileUrls(base: String, fileTitle: String): Pair<String, String>? {
         val o = api(
             base,
-            "action=query&prop=imageinfo&iiprop=url|size&iiurlwidth=$THUMB&titles=${enc(fileTitle)}",
+            "action=query&prop=imageinfo&iiprop=url|size&iiurlwidth=" + THUMB +
+                "&titles=" + enc(fileTitle),
         )
         val info = firstPage(o)?.optJSONArray("imageinfo")?.optJSONObject(0) ?: return null
-        if (info.optInt("size", 0) in 1 until 8000) return null      // an icon, not an icon
+        if (info.optInt("size", 0) in 1 until 8000) return null      // a button, not a portrait
         val full = info.optString("url").orEmpty()
         val thumb = info.optString("thumburl").ifBlank { full }
         return if (full.isBlank()) null else Pair(thumb, full)
@@ -264,7 +304,7 @@ object WikiRepo {
     private fun commonsImage(name: String): Pair<String, String>? {
         val o = api(
             COMMONS_API,
-            "action=query&list=search&srnamespace=6&srlimit=8&srsearch=${enc(name)}",
+            "action=query&list=search&srnamespace=6&srlimit=8&srsearch=" + enc(name),
         )
         val arr = o?.optJSONObject("query")?.optJSONArray("search") ?: return null
         for (i in 0 until arr.length()) {
@@ -280,15 +320,15 @@ object WikiRepo {
         val ow = saint.owTitle
         val wp = saint.wikiTitle
         if (ow.isNotBlank()) {
-            pageImage(OW_API, ow)?.let { Log.i(TAG, "${saint.id}: orthodoxwiki pageimage"); return it }
-            embeddedImage(OW_API, ow)?.let { Log.i(TAG, "${saint.id}: orthodoxwiki file"); return it }
+            pageImage(OW_API, ow)?.let { Log.i(TAG, saint.id + ": orthodoxwiki pageimage"); return it }
+            embeddedImage(OW_API, ow)?.let { Log.i(TAG, saint.id + ": orthodoxwiki file"); return it }
         }
         if (wp.isNotBlank()) {
-            pageImage(WP_API, wp)?.let { Log.i(TAG, "${saint.id}: wikipedia pageimage"); return it }
-            embeddedImage(WP_API, wp)?.let { Log.i(TAG, "${saint.id}: wikipedia file"); return it }
+            pageImage(WP_API, wp)?.let { Log.i(TAG, saint.id + ": wikipedia pageimage"); return it }
+            embeddedImage(WP_API, wp)?.let { Log.i(TAG, saint.id + ": wikipedia file"); return it }
         }
-        commonsImage(saint.name)?.let { Log.i(TAG, "${saint.id}: commons search"); return it }
-        Log.i(TAG, "${saint.id}: no picture found (ow='$ow' wp='$wp')")
+        commonsImage(saint.name)?.let { Log.i(TAG, saint.id + ": commons search"); return it }
+        Log.i(TAG, saint.id + ": no picture found (ow=" + ow + " wp=" + wp + ")")
         return null
     }
 
@@ -300,11 +340,15 @@ object WikiRepo {
 
         var fromOw = ""
         if (ow.isNotBlank()) {
-            fromOw = (extractOf(OW_API, ow) ?: "").let { if (it.length < 120) wikitextOf(OW_API, ow) ?: it else it }
+            fromOw = (extractOf(OW_API, ow) ?: "").let {
+                if (it.length < 120) wikitextOf(OW_API, ow) ?: it else it
+            }
         }
         var fromWp = ""
         if (wp.isNotBlank()) {
-            fromWp = (extractOf(WP_API, wp) ?: "").let { if (it.length < 120) wikitextOf(WP_API, wp) ?: it else it }
+            fromWp = (extractOf(WP_API, wp) ?: "").let {
+                if (it.length < 120) wikitextOf(WP_API, wp) ?: it else it
+            }
         }
 
         /* OrthodoxWiki is the Orthodox source and wins unless Wikipedia has
@@ -314,12 +358,6 @@ object WikiRepo {
         val chosen = if (useWp) fromWp else fromOw
         val host = if (useWp) "https://en.wikipedia.org/wiki/" else "https://orthodoxwiki.org/"
         val link = host + enc(if (useWp) wp else ow)
-        /* Notion mangles a URL inside a string template, so the two lines
-           below are dead text kept inside a comment - `link` above is the
-           real one. Paste the file as it is; it compiles.
-        https://en.wikipedia.org/wiki/${enc(wp)}"
-        else "https://orthodoxwiki.org/${enc(ow)}"
-        */
         return Triple(tidy(chosen), !useWp, if (chosen.isBlank()) "" else link)
     }
 
@@ -334,11 +372,23 @@ object WikiRepo {
         if (!force && old != null && goodText && goodPicture) return@withContext old
 
         /* repair: keep whatever is already good, only re-ask for what is not */
-        val (body, fromOw, url) = if (force || !goodText) bodyFor(saint) else
-            Triple(old!!.full, old.fromOrthodoxWiki, old.wikiUrl)
+        val body: String
+        val fromOw: Boolean
+        val url: String
+        if (force || !goodText || old == null) {
+            val t = bodyFor(saint)
+            body = t.first
+            fromOw = t.second
+            url = t.third
+        } else {
+            body = old.full
+            fromOw = old.fromOrthodoxWiki
+            url = old.wikiUrl
+        }
 
-        val picture = if (force || !goodPicture) findPicture(saint) else
-            Pair(old!!.image, old.imageFull)
+        val picture: Pair<String, String>? =
+            if (force || !goodPicture || old == null) findPicture(saint)
+            else Pair(old.image, old.imageFull)
 
         val text = if (body.isNotBlank()) body else old?.full.orEmpty()
         val intro = text.split("\n").firstOrNull { it.trim().length > 40 }?.trim().orEmpty()
@@ -359,18 +409,29 @@ object WikiRepo {
         fresh
     }
 
-    /* ---- the whole synaxarion --------------------------------------------- */
-
+    /* ---- the whole synaxarion ---------------------------------------------
+     * Twelve in flight, always. No batch barrier: the instant one saint is
+     * finished the next one starts, so a single slow article cannot hold up
+     * eleven others. Progress is an atomic counter because the callback is
+     * reached from twelve threads.
+     */
     suspend fun syncAll(saints: List<Saint>, onProgress: (Int, Int) -> Unit) {
         val total = saints.size
-        var done = 0
+        if (total == 0) {
+            onProgress(0, 0)
+            return
+        }
+        val done = AtomicInteger(0)
+        val gate = Semaphore(PARALLEL)
+        onProgress(0, total)
         withContext(Dispatchers.IO) {
-            saints.chunked(6).forEach { batch ->
-                coroutineScope {
-                    batch.map { s -> async { runCatching { doc(s) } } }.awaitAll()
-                }
-                done += batch.size
-                onProgress(done.coerceAtMost(total), total)
+            coroutineScope {
+                saints.map { s ->
+                    async {
+                        gate.withPermit { runCatching { doc(s) } }
+                        onProgress(done.incrementAndGet(), total)
+                    }
+                }.awaitAll()
             }
         }
     }

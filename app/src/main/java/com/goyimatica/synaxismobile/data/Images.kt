@@ -7,32 +7,38 @@ import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 /*
- * One image loader for the whole app.
+ * One HTTP client and one image loader for the whole app.
  *
- * The User-Agent is the entire fix for the missing icons. Wikimedia's user
- * agent policy refuses requests from generic library defaults, and Coil's
- * default is OkHttp's, so every portrait was coming back 403 and drawing as
- * nothing. A descriptive agent with a contact address is what the policy asks
- * for and what a browser effectively sends.
+ * The User-Agent is what makes any of this work at all: Wikimedia's policy
+ * refuses requests carrying a library default, and a refused image draws as
+ * nothing, silently. Everything else here is about speed - one connection
+ * pool, kept alive, shared by the pictures and by WikiRepo's API calls.
  */
 object Images {
 
     const val AGENT =
-        "Synaxis/6.0 (Android; an Orthodox reader; https://github.com/Goyimatica/SynaxisMobile)"
+        "Synaxis/7.0 (Android; an Orthodox reader; https://github.com/Goyimatica/SynaxisMobile)"
 
-    private val client: OkHttpClient by lazy {
+    /** Public on purpose: WikiRepo borrows it, so a sync reuses sockets. */
+    val http: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(25, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .dispatcher(
+                Dispatcher().apply {
+                    maxRequests = 64
+                    maxRequestsPerHost = 16
+                }
+            )
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .header("User-Agent", AGENT)
-                    .header("Accept", "image/avif,image/webp,image/jpeg,image/png,*/*")
                     .header("Accept-Language", "en")
                     .build()
                 chain.proceed(request)
@@ -43,19 +49,19 @@ object Images {
     fun loader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .components {
-                add(OkHttpNetworkFetcherFactory(callFactory = { client }))
+                add(OkHttpNetworkFetcherFactory(callFactory = { http }))
             }
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.20)
+                    .maxSizePercent(context, 0.25)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(context.cacheDir.resolve("icons"))
-                    .maxSizeBytes(96L * 1024 * 1024)
+                    .maxSizeBytes(128L * 1024 * 1024)
                     .build()
             }
-            .crossfade(180)
+            .crossfade(160)
             .build()
 }

@@ -49,7 +49,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
@@ -135,7 +137,6 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -143,16 +144,21 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
         ) {
             val backPress = rememberInteraction()
             Icon(
-                Icons.Outlined.ArrowBack, "Back", tint = c.dim,
+                Icons.Outlined.ArrowBack,
+                "Back",
+                tint = c.dim,
                 modifier = Modifier
                     .size(23.dp)
                     .pressScale(backPress, down = 0.85f)
                     .clickable(interactionSource = backPress, indication = null, onClick = onBack),
             )
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val refreshPress = rememberInteraction()
                 Icon(
-                    Icons.Outlined.Refresh, "Fetch the life again", tint = c.dim,
+                    Icons.Outlined.Refresh,
+                    "Fetch the life again",
+                    tint = c.dim,
                     modifier = Modifier
                         .size(20.dp)
                         .pressScale(refreshPress, down = 0.85f)
@@ -169,7 +175,9 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                             }
                         },
                 )
+
                 Spacer(Modifier.width(18.dp))
+
                 val savePress = rememberInteraction()
                 Icon(
                     if (library.isBookmarked(saint.id)) Icons.Filled.Bookmark
@@ -203,7 +211,7 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                     saint.feastText().ifBlank { null },
                     saint.era.ifBlank { null },
                     saint.jurisdiction.ifBlank { null },
-                ).joinToString("  \u00B7  "),
+                ).joinToString("  ·  "),
                 style = MaterialTheme.typography.bodySmall,
                 color = c.faint,
             )
@@ -272,7 +280,7 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                         Column {
                             Spacer(Modifier.height(9.dp))
                             Text(
-                                d.intro.take(88).trimEnd() + "\u2026",
+                                d.intro.take(88).trimEnd() + "…",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = c.faint,
                                 maxLines = 1,
@@ -290,19 +298,20 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
             when {
                 loading && body.isBlank() -> {
                     Text(
-                        "Fetching the life\u2026",
+                        "Fetching the life…",
                         style = MaterialTheme.typography.bodyMedium,
                         color = c.faint,
                     )
                 }
+
                 body.isBlank() || failed -> {
                     Text(
-                        "No life has been downloaded for this saint yet. Tap the arrows " +
-                            "above to try again, or sync everything at once from Settings.",
+                        "No life has been downloaded for this saint yet. Tap the arrows above to try again, or sync everything at once from Settings.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = c.faint,
                     )
                 }
+
                 else -> {
                     ReaderText(
                         text = body,
@@ -345,8 +354,8 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
                 Text(
                     (if (d.fromOrthodoxWiki) "From OrthodoxWiki" else "From Wikipedia") +
-                        " \u00B7 " + d.words + " words" +
-                        (if (marks.isNotEmpty()) " \u00B7 " + marks.size + " highlighted" else ""),
+                        " · " + d.words + " words" +
+                        (if (marks.isNotEmpty()) " · " + marks.size + " highlighted" else ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = c.faint,
                 )
@@ -423,46 +432,52 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
     }
 }
 
-/**
- * The icon in its mount.
- *
- * The ratio is the image's own, learned when Coil finishes decoding and
- * clamped, so a panoramic fresco and a tall Byzantine icon both sit properly
- * on the page. Height is capped so a portrait icon cannot fill the screen.
+/* ---- the icon ----------------------------------------------------------
+ * Height-led, ratio-measured, centred.
  */
 @Composable
 private fun IconFrame(url: String, label: String) {
     val c = Syn.colors
-    var ratio by remember(url) { mutableFloatStateOf(0.82f) }
-    var ready by remember(url) { mutableStateOf(false) }
-    val fade by animFloat(if (ready) 1f else 0f, Motion.fade())
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+
+    val cap = (screenHeight * 0.34f).coerceIn(190.dp, 300.dp)
+
+    var ratio by remember(url) { mutableFloatStateOf(0.80f) }
+
+    val outer = RoundedCornerShape(14.dp)
+    val inner = RoundedCornerShape(9.dp)
 
     Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(c.surface)
-            .border(1.dp, c.goldDim.copy(alpha = 0.55f), RoundedCornerShape(16.dp))
-            .padding(7.dp),
+        modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        AsyncImage(
-            model = url,
-            contentDescription = label,
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 420.dp)
-                .aspectRatio(ratio)
-                .clip(RoundedCornerShape(11.dp))
+                .height(cap)
+                .aspectRatio(ratio, matchHeightConstraintsFirst = true)
+                .clip(outer)
                 .background(c.raised)
-                .alpha(fade),
-            onSuccess = { success ->
-                val s = success.painter.intrinsicSize
-                if (s.isSpecified && s.height > 0f) {
-                    ratio = (s.width / s.height).coerceIn(0.75f, 1.25f)
-                }
-                ready = true
-            },
-        )
+                .border(1.dp, c.goldDim.copy(alpha = 0.45f), outer)
+                .padding(5.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = url,
+                contentDescription = label,
+                contentScale = ContentScale.Fit,
+                onSuccess = { state ->
+                    val w = state.painter.intrinsicSize.width
+                    val h = state.painter.intrinsicSize.height
+                    if (w > 0f && h > 0f) {
+                        ratio = (w / h).coerceIn(0.62f, 1.60f)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(inner)
+                    .background(c.surface)
+                    .border(1.dp, c.rule, inner),
+            )
+        }
     }
 }

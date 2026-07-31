@@ -24,22 +24,24 @@ import com.goyimatica.synaxismobile.data.Images
 
 /* Reading settings that every screen may need. */
 data class ReadingPrefs(
-    val face: ReadingFace = ReadingFace.CORMORANT,
+    val face: ReadingFace = ReadingFace.NOTO,
     val sizeStep: Int = 3,          // 1..5
     val leadStep: Int = 2,          // 1..3
-    val weight: Int = 500,          // 400, 500 or 600
+    val weight: Int = 600,          // 400, 500 or 600
     val justify: Boolean = false,
     val dropCap: Boolean = true,
     val animations: Float = 1f,     // 1, .55 or 0
 ) {
+    /* V7: every step is bigger. A life is read at arm's length on a phone,
+       not at desk distance, and the old scale started too small. */
     val fontSizeSp: Float
         get() = when (sizeStep) {
-            1 -> 15f; 2 -> 16f; 3 -> 17f; 4 -> 18.5f; else -> 20.5f
+            1 -> 16.5f; 2 -> 17.75f; 3 -> 19f; 4 -> 20.5f; else -> 22.5f
         }
 
     val lineHeightSp: Float
         get() = fontSizeSp * when (leadStep) {
-            1 -> 1.52f; 2 -> 1.74f; else -> 1.95f
+            1 -> 1.52f; 2 -> 1.72f; else -> 1.92f
         }
 }
 
@@ -106,7 +108,7 @@ fun SynaxisTheme(
     val c = colorsFor(resolved)
 
     /* every AsyncImage in the app goes through our loader: real User-Agent,
-       real disk cache, crossfade off (we animate it ourselves) */
+       real disk cache, one pooled connection */
     setSingletonImageLoaderFactory { ctx -> Images.loader(ctx) }
 
     MaxRefreshRate()

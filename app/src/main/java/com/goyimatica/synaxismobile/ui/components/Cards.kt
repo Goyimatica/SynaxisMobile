@@ -17,9 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -56,14 +56,19 @@ fun SaintCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(c.surface)
-                .border(1.dp, c.rule, RoundedCornerShape(14.dp))
-                .padding(14.dp),
+                .border(1.dp, c.rule, RoundedCornerShape(16.dp))
+                .padding(13.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Medallion(initial = saint.initial.toString())
-            Spacer(Modifier.width(14.dp))
+            SaintPortrait(
+                saintId = saint.id,
+                initial = saint.initial.toString(),
+                size = 54.dp,
+                corner = 14.dp,
+            )
+            Spacer(Modifier.width(13.dp))
             Column(modifier = Modifier.weight(1f)) {
                 if (!overline.isNullOrBlank()) {
                     Text(
@@ -75,7 +80,7 @@ fun SaintCard(
                 }
                 Text(
                     text = saint.display,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     color = c.text,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -84,7 +89,7 @@ fun SaintCard(
                     .filter { it.isNotBlank() }
                     .joinToString("  ·  ")
                 if (sub.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(3.dp))
                     Text(
                         text = sub,
                         style = MaterialTheme.typography.bodySmall,
@@ -113,17 +118,22 @@ fun SaintCard(
 fun ContinueCard(saint: Saint, progress: Float, onClick: () -> Unit) {
     val c = Syn.colors
     val p by animFloat(progress.coerceIn(0f, 1f), Motion.spatial(), "progress")
-    Pressable(onClick = onClick, modifier = Modifier.width(232.dp)) {
+    Pressable(onClick = onClick, modifier = Modifier.width(226.dp)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(c.surface)
-                .border(1.dp, c.rule, RoundedCornerShape(14.dp))
-                .padding(14.dp),
+                .border(1.dp, c.rule, RoundedCornerShape(16.dp))
+                .padding(13.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Medallion(initial = saint.initial.toString(), size = 34.dp)
+                SaintPortrait(
+                    saintId = saint.id,
+                    initial = saint.initial.toString(),
+                    size = 40.dp,
+                    corner = 11.dp,
+                )
                 Spacer(Modifier.width(10.dp))
                 Text(
                     text = saint.display,
@@ -145,7 +155,7 @@ fun ContinueCard(saint: Saint, progress: Float, onClick: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "${(p * 100).toInt()}% read",
+                text = "" + (p * 100).toInt() + "% read",
                 style = MaterialTheme.typography.labelSmall,
                 color = c.faint,
             )
@@ -162,9 +172,9 @@ fun QuoteCard(text: String, by: String, copied: Boolean, onCopy: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(c.surface)
-            .border(1.dp, c.rule, RoundedCornerShape(16.dp))
+            .border(1.dp, c.rule, RoundedCornerShape(18.dp))
             .padding(18.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -190,7 +200,7 @@ fun QuoteCard(text: String, by: String, copied: Boolean, onCopy: () -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            text = "— $by",
+            text = "— " + by,
             style = MaterialTheme.typography.labelLarge,
             color = c.gold,
         )
@@ -214,12 +224,12 @@ fun FastCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                /* THE FIX: the row is as tall as its tallest child, and the
-                   stripe fills that height instead of inventing one. */
+                /* the row is as tall as its tallest child, and the stripe
+                   fills that height instead of inventing one */
                 .height(IntrinsicSize.Min)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(c.surface)
-                .border(1.dp, c.rule, RoundedCornerShape(16.dp)),
+                .border(1.dp, c.rule, RoundedCornerShape(18.dp)),
         ) {
             Box(
                 modifier = Modifier
@@ -248,7 +258,7 @@ fun FastCard(
                 Spacer(Modifier.height(10.dp))
                 Text(
                     text = civilLine,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     color = c.text,
                 )
                 Spacer(Modifier.height(3.dp))
@@ -325,9 +335,13 @@ fun FeastCard(feast: Feast, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(if (feast.great) c.raised else c.surface)
-            .border(1.dp, if (feast.great) c.goldDim.copy(alpha = 0.5f) else c.rule, RoundedCornerShape(14.dp)),
+            .border(
+                1.dp,
+                if (feast.great) c.goldDim.copy(alpha = 0.5f) else c.rule,
+                RoundedCornerShape(16.dp),
+            ),
     ) {
         if (feast.great) {
             Box(
@@ -364,5 +378,48 @@ fun FeastCard(feast: Feast, modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+}
+
+/* ---- a small strip of statistics, used by the homepage ------------------ */
+
+@Composable
+fun StatTile(
+    value: String,
+    label: String,
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    val c = Syn.colors
+    val body: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(c.surface)
+                .border(1.dp, c.rule, RoundedCornerShape(14.dp))
+                .padding(vertical = 14.dp, horizontal = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.headlineMedium,
+                color = c.gold,
+                maxLines = 1,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = label.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = c.faint,
+                maxLines = 1,
+            )
+        }
+    }
+    if (onClick == null) {
+        Box(modifier = modifier) { body() }
+    } else {
+        Pressable(onClick = onClick, modifier = modifier) { body() }
     }
 }
