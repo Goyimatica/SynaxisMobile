@@ -32,6 +32,7 @@ import com.goyimatica.synaxismobile.ui.components.QuoteCard
 import com.goyimatica.synaxismobile.ui.components.SaintCard
 import com.goyimatica.synaxismobile.ui.components.ScreenHeader
 import com.goyimatica.synaxismobile.ui.components.SectionLabel
+import com.goyimatica.synaxismobile.ui.toCalStyle
 import kotlinx.coroutines.delay
 import java.time.Duration
 import java.time.LocalDate
