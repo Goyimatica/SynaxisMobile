@@ -89,7 +89,16 @@ object SaintsRepo {
     fun byId(id: String?): Saint? = if (id == null) null else byId[id]
 
     /** Everyone commemorated on a church-calendar "MM-DD". People only. */
-    fun onFeast(churchKey: String): List<Saint> = byFeast[churchKey] ?: emptyList()
+    fun onFeast(churchKey: String): List<Saint> =
+        (byFeast[churchKey] ?: emptyList()).distinctBy { it.id }
+
+    /**
+     * One query for both Today and the Calendar, so the two screens can
+     * never disagree about who is commemorated on a day. The header on
+     * Today and the list on Calendar both read this and only this.
+     */
+    fun commemoratedFor(churchKey: String, showPending: Boolean): List<Saint> =
+        onFeast(churchKey).filter { showPending || !it.pending }
 
     /**
      * The article behind a feast name, a fast name or a season.

@@ -90,8 +90,7 @@ fun TodayScreen(
     }
 
     val commemorated = remember(facts.churchKey, settings.showPending) {
-        SaintsRepo.onFeast(facts.churchKey)
-            .filter { settings.showPending || !it.pending }
+        SaintsRepo.commemoratedFor(facts.churchKey, settings.showPending)
     }
 
     /*
@@ -202,7 +201,7 @@ fun TodayScreen(
                 EmptyNote("No life in the index is appointed to this day.")
             }
         } else {
-            items(commemorated.take(8), key = { "s-" + it.id }) { saint ->
+            items(commemorated, key = { "s-" + it.id }) { saint ->
                 SaintCard(
                     saint = saint,
                     onClick = { onOpenSaint(saint.id) },

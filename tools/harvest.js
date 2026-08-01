@@ -52,7 +52,9 @@ const NOT_PERSON = new RegExp([
 	"feasts", "fasts", "glossary", "liturgic", "places", "geograph",
 	"jurisdiction", "diocese", "metropolis", "monasteries", "churches",
 	"cathedral", "books", "hymns", "prayers", "icons", "councils",
-	"church history", "calendar", "dictionar", "disambiguation", "lists"
+	"church history", "calendar", "dictionar", "disambiguation", "lists",
+	"oriental orthodox", "coptic orthodox", "armenian apostolic",
+	"syriac orthodox", "ethiopian orthodox", "malankara"
 ].join("|"), "i");
 
 /* Titles that are never a commemoration, whatever their categories say. */

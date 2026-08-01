@@ -60,8 +60,14 @@ const missing = all.filter(function (k) { return !byFeast[k]; });
 const junk = people.filter(function (s) {
 	return GLOSS.has(String(s.n).trim().toLowerCase());
 });
-const noTitle = people.filter(function (s) { return !s.o; });
+const noTitle = people.filter(function (s) { return !s.o && !s.w; });
 
+/* V11: an office is not a person. A saint's name must carry a personal name;
+   "Abbot of Iona" is a post, not a life, however reverent it sounds. */
+const OFFICE = /^(abbot|abbess|archbishop|bishop|metropolitan|patriarch|priest|deacon|monk|nun|hermit|stylite|pope|elder|igumen|hegumen|archimandrite)\s+of\b/i;
+const officeJunk = people.filter(function (s) {
+	return OFFICE.test(String(s.n).trim());
+});
 const ids = new Set();
 let dupIds = 0;
 data.forEach(function (s) {
@@ -89,7 +95,12 @@ line(junk.length === 0, "no glossary names as saints" +
 		return s.f + " " + s.n;
 	}).join(", ") : ""));
 
-line(noTitle.length === 0, "every saint with a feast has an OrthodoxWiki title" +
+line(officeJunk.length === 0, "no office titles as saints" +
+	(officeJunk.length ? ";  " + officeJunk.map(function (s) {
+		return s.f + " " + s.n;
+	}).join(", ") : ""));
+
+line(noTitle.length === 0, "every saint with a feast has an OrthodoxWiki or Wikipedia title" +
 	(noTitle.length ? ";  " + noTitle.map(function (s) {
 		return s.f + " " + s.n;
 	}).join(", ") : ""));

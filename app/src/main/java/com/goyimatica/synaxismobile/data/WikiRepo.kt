@@ -184,6 +184,18 @@ object WikiRepo {
         (dir?.listFiles() ?: emptyArray()).sumOf { it.length() }
     }
 
+    /**
+     * V11: roughly what the missing lives will cost, so the choice dialog can
+     * say how much data is coming before a single byte is fetched. Measured
+     * from the lives already on the phone; a generous default when none are.
+     */
+    suspend fun estimateBytes(missing: List<Saint>): Long = withContext(Dispatchers.IO) {
+        val files = dir?.listFiles { f -> f.name.endsWith(".json") } ?: return@withContext 0L
+        val avg = if (files.isEmpty()) 0L else files.sumOf { it.length() } / files.size
+        val per = if (avg > 0L) avg else 700_000L
+        per * missing.size
+    }
+
     suspend fun clear() {
         withContext(Dispatchers.IO) {
             diskLock.withLock {
@@ -379,7 +391,26 @@ object WikiRepo {
         return JUNK.none { n.contains(it) }
     }
 
-    private fun pageImage(base: String, title: String): Pair<String, String>? {
+    /* V11: a person is not a place. For a saint, refuse pictures whose file
+       names say church, monastery, tomb or landscape - those are the random
+       buildings that used to stand in for a life. */
+    private val PLACES = listOf(
+        "church", "cathedral", "monastery", "abbey", "chapel", "basilica",
+        "tomb", "grave", "monument", "memorial", "plaque", "window", "stained",
+        "facade", "interior", "exterior", "aerial", "panorama", "landscape",
+        "building", "house", "village", "city", "street", "square", "tower",
+        "bell", "gate", "wall", "cemetery", "reliquary", "sarcophagus", "crypt",
+        "nave", "apse", "iconostasis", "mural", "ceiling", "dome", "floor",
+    )
+
+    private fun usableForPerson(name: String): Boolean {
+        val n = name.lowercase()
+        if (!usableFile(name)) return false
+        if (PLACES.any { n.contains(it) }) return false
+        return true
+    }
+
+    private fun pageImage(base: String, title: String, person: Boolean = false): Pair<String, String>? {
         if (title.isBlank()) return null
         val o = api(
             base,
@@ -391,20 +422,26 @@ object WikiRepo {
         val thumb = page.optJSONObject("thumbnail")?.optString("source").orEmpty()
         val full = original.ifBlank { thumb }
         val small = thumb.ifBlank { original }
-        return if (full.isBlank()) null else Pair(small, full)
+        if (full.isBlank()) return null
+        if (person && !usableForPerson(full.substringAfterLast('/'))) return null
+        return Pair(small, full)
     }
 
-    private fun embeddedImage(base: String, title: String): Pair<String, String>? {
+    private fun embeddedImage(base: String, title: String, person: Boolean = false): Pair<String, String>? {
         if (title.isBlank()) return null
         val o = api(base, "action=query&prop=images&imlimit=40&redirects=1&titles=" + enc(title))
         val arr = firstPage(o)?.optJSONArray("images") ?: return null
+        var best: Pair<String, String>? = null
         for (i in 0 until arr.length()) {
             val name = arr.optJSONObject(i)?.optString("title").orEmpty()
             if (name.isBlank() || !usableFile(name)) continue
-            val info = fileUrls(base, name)
-            if (info != null) return info
+            if (person && !usableForPerson(name)) continue
+            val info = fileUrls(base, name) ?: continue
+            /* for a person, an icon-named file wins over a plain one */
+            if (person && name.lowercase().contains("icon")) return info
+            if (best == null) best = info
         }
-        return null
+        return best
     }
 
     private fun fileUrls(base: String, fileTitle: String): Pair<String, String>? {
@@ -427,15 +464,23 @@ object WikiRepo {
      * It now demands that the file name itself carry a word of the name we
      * are looking for, and the caller only reaches it for a person.
      */
-    private fun commonsImage(name: String): Pair<String, String>? {
+    /*
+     * V11: an actual icon of a person, searched for by name. Commons is full
+     * of "Icon of St X" files; when one exists it is the right picture, and
+     * it beats any lead image, which for a saint is all too often a photo of
+     * their church or their tomb.
+     */
+    private fun iconImage(name: String): Pair<String, String>? {
+        if (name.isBlank()) return null
         val o = api(
             COMMONS_API,
-            "action=query&list=search&srnamespace=6&srlimit=8&srsearch=" + enc(name),
+            "action=query&list=search&srnamespace=6&srlimit=8&srsearch=" + enc("icon of " + name),
         )
         val arr = o?.optJSONObject("query")?.optJSONArray("search") ?: return null
         for (i in 0 until arr.length()) {
             val t = arr.optJSONObject(i)?.optString("title").orEmpty()
-            if (t.isBlank() || !usableFile(t)) continue
+            if (t.isBlank() || !usableForPerson(t)) continue
+            if (!t.lowercase().contains("icon")) continue
             if (!related(t, name)) continue
             val info = fileUrls(COMMONS_API, t)
             if (info != null) return info
@@ -443,22 +488,45 @@ object WikiRepo {
         return null
     }
 
+    private fun commonsImage(name: String): Pair<String, String>? {
+        val o = api(
+            COMMONS_API,
+            "action=query&list=search&srnamespace=6&srlimit=8&srsearch=" + enc(name),
+        )
+        val arr = o?.optJSONObject("query")?.optJSONArray("search") ?: return null
+        var best: Pair<String, String>? = null
+        for (i in 0 until arr.length()) {
+            val t = arr.optJSONObject(i)?.optString("title").orEmpty()
+            if (t.isBlank() || !usableForPerson(t)) continue
+            if (!related(t, name)) continue
+            val info = fileUrls(COMMONS_API, t) ?: continue
+            if (t.lowercase().contains("icon")) return info
+            if (best == null) best = info
+        }
+        return best
+    }
+
     private fun findPicture(saint: Saint): Pair<String, String>? {
+        val person = saint.isSaint
         val ow = saint.owTitle.ifBlank { saint.name }
 
-        pageImage(OW_API, ow)?.let { return it }
-        embeddedImage(OW_API, ow)?.let { return it }
+        if (person) {
+            iconImage(saint.name)?.let { return it }
+        }
+
+        pageImage(OW_API, ow, person)?.let { return it }
+        embeddedImage(OW_API, ow, person)?.let { return it }
 
         val wp = wpTitleFor(saint)
         if (wp.isNotBlank()) {
-            pageImage(WP_API, wp)?.let { return it }
-            embeddedImage(WP_API, wp)?.let { return it }
+            pageImage(WP_API, wp, person)?.let { return it }
+            embeddedImage(WP_API, wp, person)?.let { return it }
         }
 
         /* A blind search of Commons is a last resort for a person and for
            nobody else. A subject either has the picture on its own article
            or it goes without one, which is far better than a wrong one. */
-        if (saint.isSaint) {
+        if (person) {
             commonsImage(saint.name)?.let { return it }
         }
 

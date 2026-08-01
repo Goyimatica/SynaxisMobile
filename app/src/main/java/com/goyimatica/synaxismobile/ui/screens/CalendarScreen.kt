@@ -89,7 +89,7 @@ fun CalendarScreen(onOpenSaint: (String) -> Unit, onOpenSettings: () -> Unit) {
 
     val facts = remember(chosen, settings.calendarStyle) { factsFor(chosen, style) }
     val commemorated = remember(facts.churchKey, settings.showPending) {
-        SaintsRepo.onFeast(facts.churchKey).filter { settings.showPending || !it.pending }
+        SaintsRepo.commemoratedFor(facts.churchKey, settings.showPending)
     }
 
     LazyColumn(

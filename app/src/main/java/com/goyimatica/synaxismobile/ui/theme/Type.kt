@@ -24,9 +24,18 @@ val NotoSerif = FontFamily(
     Font(R.font.noto_serif_italic, FontWeight.Normal, FontStyle.Italic),
 )
 
+/* The full Outfit range: the app ships all nine weights, so headings can
+   sit at SemiBold and Black without Android synthesising a fake bold. */
 val Outfit = FontFamily(
+    Font(R.font.outfit_thin, FontWeight.Thin),
+    Font(R.font.outfit_extralight, FontWeight.ExtraLight),
+    Font(R.font.outfit_light, FontWeight.Light),
     Font(R.font.outfit_regular, FontWeight.Normal),
     Font(R.font.outfit_medium, FontWeight.Medium),
+    Font(R.font.outfit_semibold, FontWeight.SemiBold),
+    Font(R.font.outfit_bold, FontWeight.Bold),
+    Font(R.font.outfit_extrabold, FontWeight.ExtraBold),
+    Font(R.font.outfit_black, FontWeight.Black),
 )
 
 enum class ReadingFace { CORMORANT, NOTO, OUTFIT }

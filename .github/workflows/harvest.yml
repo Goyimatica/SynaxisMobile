@@ -1,0 +1,41 @@
+name: Harvest
+
+# Temporary CI runner for the data tools. The app never builds here - this
+# job only re-harvests OrthodoxWiki on a full-speed runner, verifies the
+# result twice, and uploads the fresh saints.json for review. Download the
+# artifact, diff it against the repo, and commit the good parts.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ 'harvest/**' ]
+
+jobs:
+  harvest:
+    name: Harvest the synaxarion
+    runs-on: ubuntu-latest
+    steps:
+      # Actions pinned to commit SHAs, not tags - a moved tag is a supply-
+      # chain attack in waiting. Verified against the repos on 2026-08-01.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Node version
+        run: node --version
+
+      - name: Harvest the day templates
+        run: node tools/harvest.js
+
+      - name: Fill the gaps from the verified backlog
+        run: node tools/fill-gaps.js
+
+      - name: Verify twice
+        run: |
+          node tools/verify.js
+          node tools/verify.js
+
+      - name: Upload the fresh index
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: saints-json
+          path: app/src/main/assets/saints.json
+          retention-days: 14
