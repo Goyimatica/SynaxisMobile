@@ -116,7 +116,10 @@ object WikiRepo {
                 fromOrthodoxWiki = o.optBoolean("fromOrthodoxWiki"),
                 missing = o.optBoolean("missing"),
                 at = o.optLong("at"),
-                both = o.optBoolean("both", true),
+                /* Old cache files have no `both` key; they must be fetched
+                   once more to fill in the second source, so the default is
+                   false, not true. */
+                both = o.optBoolean("both", false),
             )
         }.getOrNull()?.also {
             mem[id] = it
@@ -500,9 +503,9 @@ object WikiRepo {
         val wp: String
         val url: String
         if (force || old == null || !goodText || !old.both) {
-            val both = bodyFor(saint)
-            ow = both.first
-            wp = both.second
+            val sources = bodyFor(saint)
+            ow = sources.first
+            wp = sources.second
             val useWp = prefer(ow, wp)
             val host = if (useWp) "https://en.wikipedia.org/wiki/" else "https://orthodoxwiki.org/"
             val title = if (useWp) wpTitleFor(saint) else saint.owTitle.ifBlank { saint.name }

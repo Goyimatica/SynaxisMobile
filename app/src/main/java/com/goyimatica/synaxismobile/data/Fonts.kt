@@ -200,8 +200,8 @@ object Fonts {
     private fun safeName(raw: String): String? {
         var s = raw.trim()
         if (s.isBlank() || s.length > 64) return null
+        /* A dot already rules the name out, so ".." can never slip through. */
         if (s.any { it == '/' || it == '\\' || it == '\u0000' || it == '.' }) return null
-        if (s.contains("..")) return null
         s = s.replace(Regex("[^A-Za-z0-9 +_-]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()

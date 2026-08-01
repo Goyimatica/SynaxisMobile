@@ -72,11 +72,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = if (canSignRelease) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            /* Only the real key, or none at all - never the debug key. The
+               task guard below refuses to package a release without one. */
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

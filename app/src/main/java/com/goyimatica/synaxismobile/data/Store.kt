@@ -17,7 +17,9 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-/** A highlight or a note. Two integers and a colour, exactly as on the web. */
+/** A highlight or a note. Two integers and a colour, exactly as on the web.
+ *  `source` is the text the offsets belong to: "ow", "wp", or "" for a
+ *  legacy pre-1.0.1 mark made on the preferred telling. */
 data class Mark(
     val key: String,
     val start: Int,
@@ -25,7 +27,8 @@ data class Mark(
     val color: String,
     val at: Long,
     val text: String,
-    val note: String? = null
+    val note: String? = null,
+    val source: String = ""
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("k", key)
@@ -35,6 +38,7 @@ data class Mark(
         .put("t", at)
         .put("x", text)
         .put("note", note ?: JSONObject.NULL)
+        .put("s", source)
 
     companion object {
         fun from(o: JSONObject) = Mark(
@@ -44,7 +48,8 @@ data class Mark(
             color = o.optString("c", "yellow"),
             at = o.optLong("t", 0L),
             text = o.optString("x", ""),
-            note = o.optStringOrNull("note")
+            note = o.optStringOrNull("note"),
+            source = o.optString("s", "")
         )
 
         /* V10: UUID instead of Math.random. Keys are only ever local

@@ -99,13 +99,23 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
     var notingSelection by remember(saintId) { mutableStateOf(false) }
 
     val scroll = rememberScrollState()
-    val marks = remember(library, saintId) { library.marksFor(saintId) }
 
     /* V10: which article to show. Both are on the phone now; this picks one.
        It resets to the richer one whenever a fresh download lands. */
     var useWp by remember(saintId) { mutableStateOf(false) }
     val d = doc
     LaunchedEffect(d?.at) { useWp = d?.fromOrthodoxWiki == false }
+
+    /* Highlights belong to the text they were made on: an offset in the
+       OrthodoxWiki telling is meaningless in the Wikipedia one. Only marks
+       for the shown source are painted; legacy marks (no source, made before
+       the two-source reader existed) travel with the preferred telling. */
+    val marks = remember(library, saintId, useWp, d?.at) {
+        val shown = if (useWp) "wp" else "ow"
+        val preferred = if (d?.fromOrthodoxWiki == false) "wp" else "ow"
+        library.marksFor(saintId)
+            .filter { it.source == shown || (it.source.isEmpty() && shown == preferred) }
+    }
 
     LaunchedEffect(saintId) {
         val s = saint ?: return@LaunchedEffect
@@ -361,6 +371,7 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                                         at = System.currentTimeMillis(),
                                         text = chosen,
                                         note = "",
+                                        source = if (useWp) "wp" else "ow",
                                     ),
                                 )
                             }
@@ -454,6 +465,7 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                             at = System.currentTimeMillis(),
                             text = chosen,
                             note = written,
+                            source = if (useWp) "wp" else "ow",
                         ),
                     )
                 }
