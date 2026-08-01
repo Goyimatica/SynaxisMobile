@@ -17,25 +17,10 @@ const path = require("path");
 
 const OUT = path.join(__dirname, "..", "app", "src", "main", "assets", "saints.json");
 
-/* A name that is a title or a role, not a person. A saint named "Cloud"
-   exists in folklore, but OrthodoxWiki's article is about weather. */
-const GLOSS = new Set([
-	"abbess", "abbot", "abbreviations", "acheiropoieta", "afterfeast",
-	"akathist", "akolouthia", "anchorite", "angels", "apodosis", "apostate",
-	"apostles", "archangel", "archbishop", "archimandrite", "asceticism",
-	"bishop", "cathedral", "church", "cloud", "deacon", "elder", "evangelist",
-	"fasting", "feasts", "geronta", "glossary", "great lent", "hermit",
-	"hegumen", "igumen", "icon", "icons", "liturgy", "martyr", "matins",
-	"metropolitan", "miracle", "missionary", "monastery", "monk", "novice",
-	"nun", "passion-bearer", "patriarch", "pope", "priest", "prophet",
-	"relics", "saint", "schema", "stylite", "synaxis", "theotokos",
-	"wonderworker", "wonder-worker", "vespers", "the ladder of divine ascent",
-	"other events", "cross procession", "adoration of the magi", "magi",
-	"shepherds", "holy trinity", "jesus christ", "dormition", "pascha",
-	"the faith", "the feasts", "the fasts", "translation of relics",
-	"baptism of rus", "baptism of rus'", "holy land", "monasticism",
-	"ladder of divine ascent", "abbey"
-]);
+/* Glossary words and office titles live in one shared module with the
+   harvest tools, so the three can never drift apart again - the CI run of
+   2026-08-01 proved they had. */
+const { GLOSS, OFFICE } = require("./glossary");
 
 const MONTHS_IN = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -62,9 +47,6 @@ const junk = people.filter(function (s) {
 });
 const noTitle = people.filter(function (s) { return !s.o && !s.w; });
 
-/* V11: an office is not a person. A saint's name must carry a personal name;
-   "Abbot of Iona" is a post, not a life, however reverent it sounds. */
-const OFFICE = /^(abbot|abbess|archbishop|bishop|metropolitan|patriarch|priest|deacon|monk|nun|hermit|stylite|pope|elder|igumen|hegumen|archimandrite)\s+of\b/i;
 const officeJunk = people.filter(function (s) {
 	return OFFICE.test(String(s.n).trim());
 });

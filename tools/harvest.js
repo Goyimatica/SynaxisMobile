@@ -84,19 +84,11 @@ const BLOCK = new Set([
 		"new", "newly", "the", "of", "and"
 	]);
 
-	/* V11: a bare glossary word is never a commemoration, whatever its
-	   categories say - the CI run proved "Apostles" and "Archangel" slip
-	   through a category check, so they are refused by name here. Kept in
-	   step with tools/verify.js. */
-	const GLOSS = new Set([
-		"apostles", "archangel", "archimandrite", "asceticism", "cloud",
-		"evangelist", "geronta", "igumen", "miracle", "missionary", "novice",
-		"passion-bearer", "pope", "stylite", "wonderworker", "wonder-worker",
-		"the ladder of divine ascent", "ladder of divine ascent", "the faith",
-		"the feasts", "the fasts", "other events", "cross procession",
-		"adoration of the magi", "commemoration of the shepherds", "magi",
-		"shepherds"
-	]);
+	/* A bare glossary word is never a commemoration, whatever its categories
+	   say - the CI run proved "Apostles" and "Archangel" slip through a
+	   category check. The list itself is shared with verify.js and
+	   fill-gaps.js, so it can never drift out of step. */
+	const { GLOSS, OFFICE } = require("./glossary");
 
 /* Subjects, added as themselves - feasts, fasts and the faith. */
 const TOPICS = [
@@ -429,7 +421,7 @@ async function main() {
 		let id = slug(parts.name || title);
 		if (!id) return;
 		/* V11: an office is not a person - "Abbot of Iona" must not return. */
-		if (/^(abbot|abbess|archbishop|bishop|metropolitan|patriarch|priest|deacon|monk|nun|hermit|stylite|pope|elder|igumen|hegumen|archimandrite)\s+of\b/i.test(parts.name)) return;
+		if (OFFICE.test(parts.name)) return;
 		const key = name ? dayOf.get(name[0].toLowerCase()) : null;
 		if (byId.has(id) && key) id = id + "-" + key.replace("-", "");
 		if (byId.has(id)) return;

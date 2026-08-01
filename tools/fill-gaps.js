@@ -40,30 +40,9 @@ const NOT_PERSON = new RegExp([
 	"syriac orthodox", "ethiopian orthodox", "malankara"
 ].join("|"), "i");
 
-/* The V8 harvest let glossary words through; these were the worst of them.
-   A name on this list is refused before any category check is spent on it.
-   V11: kept in step with tools/verify.js - the CI run proved the two lists
-   must agree, or the harvest quietly adds "Apostles" back and verify fails. */
-const GLOSS = new Set([
-	"abbess", "abbot", "abbreviations", "acheiropoieta", "afterfeast",
-	"akathist", "akolouthia", "anchorite", "angels", "apodosis", "apostate",
-	"apostles", "archangel", "archbishop", "archimandrite", "asceticism",
-	"bishop", "cathedral", "church", "cloud", "deacon", "elder", "evangelist",
-	"fasting", "feasts", "geronta", "glossary", "great lent", "hermit",
-	"hegumen", "igumen", "icon", "icons", "liturgy", "martyr", "matins",
-	"metropolitan", "miracle", "missionary", "monastery", "monk", "novice",
-	"nun", "passion-bearer", "patriarch", "pope", "priest", "prophet",
-	"relics", "saint", "schema", "stylite", "synaxis", "theotokos",
-	"wonderworker", "wonder-worker", "vespers", "the ladder of divine ascent",
-	"ladder of divine ascent", "other events", "cross procession",
-	"adoration of the magi", "commemoration of the shepherds", "magi",
-	"shepherds", "holy trinity", "jesus christ", "dormition", "pascha",
-	"the faith", "the feasts", "the fasts", "translation of relics",
-	"baptism of rus", "baptism of rus'", "holy land", "monasticism", "abbey"
-]);
-
-/* V11: an office is not a person. "Abbot of Iona" is a post, not a life. */
-const OFFICE = /^(abbot|abbess|archbishop|bishop|metropolitan|patriarch|priest|deacon|monk|nun|hermit|stylite|pope|elder|igumen|hegumen|archimandrite)\s+of\b/i;
+/* Glossary words and office titles live in one shared module with verify.js
+   and harvest.js, so the lists can never drift apart again. */
+const { GLOSS, OFFICE } = require("./glossary");
 
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 

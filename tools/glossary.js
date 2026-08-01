@@ -1,0 +1,40 @@
+/*
+ * Synaxis - the one list of words that are never saints.
+ *
+ * tools/verify.js, tools/harvest.js and tools/fill-gaps.js all require this
+ * module, so a word added here is refused everywhere at once. The CI harvest
+ * run of 2026-08-01 proved what happens when these lists live in two places:
+ * the loose V8 backlog quietly re-added "Apostles" and "Abbot of Iona" and
+ * verify.js, which had the fuller list, failed. One source of truth, by
+ * construction.
+ */
+
+/*
+ * A name that is a title or a role, not a person. A saint named "Cloud"
+ * exists in folklore, but OrthodoxWiki's article is about weather.
+ */
+const GLOSS = new Set([
+	"abbess", "abbot", "abbreviations", "acheiropoieta", "afterfeast",
+	"akathist", "akolouthia", "anchorite", "angels", "apodosis", "apostate",
+	"apostles", "archangel", "archbishop", "archimandrite", "asceticism",
+	"bishop", "cathedral", "church", "cloud", "deacon", "elder", "evangelist",
+	"fasting", "feasts", "geronta", "glossary", "great lent", "hermit",
+	"hegumen", "igumen", "icon", "icons", "liturgy", "martyr", "matins",
+	"metropolitan", "miracle", "missionary", "monastery", "monk", "novice",
+	"nun", "passion-bearer", "patriarch", "pope", "priest", "prophet",
+	"relics", "saint", "schema", "stylite", "synaxis", "theotokos",
+	"wonderworker", "wonder-worker", "vespers", "the ladder of divine ascent",
+	"other events", "cross procession", "adoration of the magi", "magi",
+	"shepherds", "commemoration of the shepherds", "holy trinity",
+	"jesus christ", "dormition", "pascha", "the faith", "the feasts",
+	"the fasts", "translation of relics", "baptism of rus", "baptism of rus'",
+	"holy land", "monasticism", "ladder of divine ascent", "abbey"
+]);
+
+/*
+ * An office is not a person. "Abbot of Iona" is a post, not a life, however
+ * reverent it sounds. A saint's name must carry a personal name.
+ */
+const OFFICE = /^(abbot|abbess|archbishop|bishop|metropolitan|patriarch|priest|deacon|monk|nun|hermit|stylite|pope|elder|igumen|hegumen|archimandrite)\s+of\b/i;
+
+module.exports = { GLOSS, OFFICE };
