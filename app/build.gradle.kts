@@ -114,13 +114,15 @@ android {
  * with the SDK publish an "update" over this app. So a release is now
  * refused until a real key exists; only the debug variant may use it.
  */
+val releaseCanSign = canSignRelease // local copy: task actions cannot capture the script
+
 tasks.configureEach {
     if (name.startsWith("assembleRelease") ||
         name.startsWith("bundleRelease") ||
         name.startsWith("packageRelease")
     ) {
         doFirst {
-            check(canSignRelease) {
+            check(releaseCanSign) {
                 "Release builds need a signing key. Create keystore.properties " +
                     "or set the SYNAXIS_STORE_FILE / SYNAXIS_STORE_PASSWORD / " +
                     "SYNAXIS_KEY_ALIAS / SYNAXIS_KEY_PASSWORD environment variables."
