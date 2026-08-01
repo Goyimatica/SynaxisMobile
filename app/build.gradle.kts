@@ -35,8 +35,8 @@ android {
         targetSdk = 37
 
         // CI passes VERSION_CODE and VERSION_NAME from the tag; locally these win.
-        versionCode = (System.getenv("VERSION_CODE") ?: "8").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "1.1.0"
+        versionCode = (System.getenv("VERSION_CODE") ?: "9").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
