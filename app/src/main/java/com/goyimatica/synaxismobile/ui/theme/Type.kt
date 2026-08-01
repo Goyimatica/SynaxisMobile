@@ -9,8 +9,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.goyimatica.synaxismobile.R
 
-/* The ten faces, under their legal resource names. Android resolves weights
-   itself, so FontWeight.Medium on a Cormorant style picks the medium file. */
+/* The built-in faces, under their legal resource names. */
 val Cormorant = FontFamily(
     Font(R.font.cormorant_regular, FontWeight.Normal),
     Font(R.font.cormorant_medium, FontWeight.Medium),
@@ -38,30 +37,34 @@ fun familyFor(f: ReadingFace): FontFamily = when (f) {
     ReadingFace.SANS -> Inter
 }
 
+/** What the app is set in when nothing has been downloaded. */
+val DefaultUiFamily: FontFamily = NotoSerif
+
 /*
- * V7: two families, one rule.
+ * V8: one family, fifteen styles.
  *
- *   Cormorant  - display, headline. The app's own voice: screen titles,
- *                saints' names, feast names, the quotation.
- *   Inter      - title, body, label. Everything functional: overlines,
- *                chips, counts, captions, buttons.
- *   Noto Serif - the reader only, chosen in Settings. It appears in no
- *                style below, which is the whole point.
+ * Every style below takes the same `family`. The hierarchy is carried by
+ * weight, size and letter-spacing alone, which is how a book does it. Pass a
+ * downloaded family in and the entire interface changes voice at once, with
+ * nothing left behind in the old one.
  */
-val SynaxisTypography = Typography(
-    displayLarge = TextStyle(fontFamily = Cormorant, fontWeight = FontWeight.SemiBold, fontSize = 44.sp, lineHeight = 50.sp),
-    displayMedium = TextStyle(fontFamily = Cormorant, fontWeight = FontWeight.SemiBold, fontSize = 36.sp, lineHeight = 42.sp),
-    displaySmall = TextStyle(fontFamily = Cormorant, fontWeight = FontWeight.SemiBold, fontSize = 30.sp, lineHeight = 36.sp),
-    headlineLarge = TextStyle(fontFamily = Cormorant, fontWeight = FontWeight.SemiBold, fontSize = 32.sp, lineHeight = 38.sp),
-    headlineMedium = TextStyle(fontFamily = Cormorant, fontWeight = FontWeight.Medium, fontSize = 25.sp, lineHeight = 31.sp),
-    headlineSmall = TextStyle(fontFamily = Cormorant, fontWeight = FontWeight.Medium, fontSize = 21.sp, lineHeight = 28.sp),
-    titleLarge = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 17.sp, lineHeight = 23.sp),
-    titleMedium = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 15.5.sp, lineHeight = 21.sp),
-    titleSmall = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 19.sp),
-    bodyLarge = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 25.sp),
-    bodyMedium = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 21.sp),
-    bodySmall = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Normal, fontSize = 12.5.sp, lineHeight = 18.sp),
-    labelLarge = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.5.sp, letterSpacing = 0.3.sp),
-    labelMedium = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 12.5.sp, letterSpacing = 1.0.sp),
-    labelSmall = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 11.5.sp, letterSpacing = 1.2.sp),
+fun synaxisTypography(family: FontFamily = DefaultUiFamily): Typography = Typography(
+    displayLarge = TextStyle(fontFamily = family, fontWeight = FontWeight.SemiBold, fontSize = 42.sp, lineHeight = 49.sp),
+    displayMedium = TextStyle(fontFamily = family, fontWeight = FontWeight.SemiBold, fontSize = 34.sp, lineHeight = 41.sp),
+    displaySmall = TextStyle(fontFamily = family, fontWeight = FontWeight.SemiBold, fontSize = 29.sp, lineHeight = 36.sp),
+    headlineLarge = TextStyle(fontFamily = family, fontWeight = FontWeight.SemiBold, fontSize = 30.sp, lineHeight = 37.sp),
+    headlineMedium = TextStyle(fontFamily = family, fontWeight = FontWeight.Medium, fontSize = 24.sp, lineHeight = 30.sp),
+    headlineSmall = TextStyle(fontFamily = family, fontWeight = FontWeight.Medium, fontSize = 20.sp, lineHeight = 27.sp),
+    titleLarge = TextStyle(fontFamily = family, fontWeight = FontWeight.Medium, fontSize = 17.sp, lineHeight = 23.sp),
+    titleMedium = TextStyle(fontFamily = family, fontWeight = FontWeight.Medium, fontSize = 15.5.sp, lineHeight = 21.sp),
+    titleSmall = TextStyle(fontFamily = family, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 19.sp),
+    bodyLarge = TextStyle(fontFamily = family, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 25.sp),
+    bodyMedium = TextStyle(fontFamily = family, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 21.sp),
+    bodySmall = TextStyle(fontFamily = family, fontWeight = FontWeight.Normal, fontSize = 12.5.sp, lineHeight = 18.sp),
+    labelLarge = TextStyle(fontFamily = family, fontWeight = FontWeight.Medium, fontSize = 13.5.sp, letterSpacing = 0.3.sp),
+    labelMedium = TextStyle(fontFamily = family, fontWeight = FontWeight.Medium, fontSize = 12.5.sp, letterSpacing = 1.0.sp),
+    labelSmall = TextStyle(fontFamily = family, fontWeight = FontWeight.Medium, fontSize = 11.5.sp, letterSpacing = 1.2.sp),
 )
+
+/** Kept so nothing that still imports the old constant fails to compile. */
+val SynaxisTypography: Typography = synaxisTypography()

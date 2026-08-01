@@ -5,13 +5,10 @@ import android.content.SharedPreferences
 /**
  * Everything the Settings screen changes.
  *
- * Stored as primitives rather than enum names so a renamed enum constant in a
- * later version cannot orphan somebody's preferences.
- *
- * V7 changes three defaults: the reading face is Noto Serif rather than
- * Cormorant, the weight is semibold, and the size scale itself got bigger in
- * Theme.kt. prefsVersion lifts those three for anyone who installed earlier
- * and never changed them.
+ * V8 adds two font names. They are stored as plain strings rather than as an
+ * index into a list, because the list of installed fonts changes whenever the
+ * user adds one, and an index into a shifting list is how preferences end up
+ * pointing at the wrong thing. Blank means the built-in typeface.
  */
 data class Settings(
     val palette: Int = 0,          // 0 Night, 1 Midnight, 2 Sepia, 3 Parchment
@@ -26,7 +23,9 @@ data class Settings(
     val keepScreenOn: Boolean = false,
     val syncOnWifiOnly: Boolean = false,
     val showPending: Boolean = true,
-    val prefsVersion: Int = 7,
+    val uiFont: String = "",       // a downloaded family, or blank for built-in
+    val readerFont: String = "",   // ditto, for the reader only
+    val prefsVersion: Int = 8,
 ) {
     fun write(p: SharedPreferences) {
         p.edit()
@@ -42,7 +41,9 @@ data class Settings(
             .putBoolean("keepScreenOn", keepScreenOn)
             .putBoolean("syncOnWifiOnly", syncOnWifiOnly)
             .putBoolean("showPending", showPending)
-            .putInt("prefsVersion", 7)
+            .putString("uiFont", uiFont)
+            .putString("readerFont", readerFont)
+            .putInt("prefsVersion", 8)
             .apply()
     }
 
@@ -61,7 +62,9 @@ data class Settings(
                 keepScreenOn = p.getBoolean("keepScreenOn", false),
                 syncOnWifiOnly = p.getBoolean("syncOnWifiOnly", false),
                 showPending = p.getBoolean("showPending", true),
-                prefsVersion = 7,
+                uiFont = p.getString("uiFont", "").orEmpty(),
+                readerFont = p.getString("readerFont", "").orEmpty(),
+                prefsVersion = 8,
             )
 
             // Written by an older build, and never revisited by hand.

@@ -13,15 +13,22 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontFamily
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.setSingletonImageLoaderFactory
+import com.goyimatica.synaxismobile.data.Fonts
 import com.goyimatica.synaxismobile.data.Images
+import com.goyimatica.synaxismobile.data.Store
 
 data class ReadingPrefs(
     val face: ReadingFace = ReadingFace.NOTO,
@@ -46,11 +53,16 @@ data class ReadingPrefs(
 val LocalSynaxisColors = staticCompositionLocalOf { NightColors }
 val LocalReadingPrefs = staticCompositionLocalOf { ReadingPrefs() }
 
+/** The family the reader is set in. V8: may be a downloaded one. */
+val LocalReaderFamily = staticCompositionLocalOf<FontFamily> { NotoSerif }
+
 object Syn {
     val colors: SynaxisColors
         @Composable get() = LocalSynaxisColors.current
     val reading: ReadingPrefs
         @Composable get() = LocalReadingPrefs.current
+    val readerFamily: FontFamily
+        @Composable get() = LocalReaderFamily.current
 }
 
 private fun Context.activity(): Activity? {
@@ -105,6 +117,28 @@ fun SynaxisTheme(
 
     MaxRefreshRate()
 
+    /*
+     * V8 - the typeface.
+     *
+     * Resolved here rather than in App.kt because the theme is the one place
+     * every screen passes through, and because doing it here means the shell
+     * did not have to change at all. Settings is read directly: it is a
+     * StateFlow on a singleton, so this costs a subscription and nothing else.
+     */
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { Fonts.init(context) }
+
+    val settings by Store.settings.collectAsStateWithLifecycle()
+    val installedCount = Fonts.installed.size
+
+    val uiFamily = remember(settings.uiFont, installedCount) {
+        Fonts.family(settings.uiFont) ?: DefaultUiFamily
+    }
+    val readerFamily = remember(settings.readerFont, reading.face, installedCount) {
+        Fonts.family(settings.readerFont) ?: familyFor(reading.face)
+    }
+    val typography = remember(uiFamily) { synaxisTypography(uiFamily) }
+
     val scheme = if (c.isDark) {
         darkColorScheme(
             primary = c.gold, onPrimary = onGold(c),
@@ -129,20 +163,11 @@ fun SynaxisTheme(
 
     val view = LocalView.current
     if (!view.isInEditMode) {
-        val context = LocalContext.current
         SideEffect {
             val window = context.activity()?.window ?: return@SideEffect
 
-            /*
-             * V7.1 - the navigation bar.
-             *
-             * enableEdgeToEdge installs a contrast scrim behind the gesture
-             * pill, picked from the system's light/dark setting rather than
-             * from our palette, which is why the bottom bar never matched the
-             * app while the status bar always did. Both bars are made truly
-             * transparent and the scrim is switched off, so what shows through
-             * is the surface our own bottom bar already draws.
-             */
+            /* V7.1: kill the contrast scrim behind the gesture pill, which is
+               what made the navigation bar disagree with the app. */
             window.statusBarColor = AndroidColor.TRANSPARENT
             window.navigationBarColor = AndroidColor.TRANSPARENT
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -159,10 +184,11 @@ fun SynaxisTheme(
     CompositionLocalProvider(
         LocalSynaxisColors provides c,
         LocalReadingPrefs provides reading,
+        LocalReaderFamily provides readerFamily,
     ) {
         MaterialTheme(
             colorScheme = scheme,
-            typography = SynaxisTypography,
+            typography = typography,
             content = content,
         )
     }

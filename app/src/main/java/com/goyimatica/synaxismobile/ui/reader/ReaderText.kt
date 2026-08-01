@@ -129,7 +129,7 @@ fun ReaderText(
         Text(
             text = annotated,
             color = c.text,
-            fontFamily = familyFor(reading.face),
+            fontFamily = Syn.readerFamily,
             fontSize = bodySize,
             lineHeight = reading.lineHeightSp.sp,
             fontWeight = FontWeight(reading.weight),

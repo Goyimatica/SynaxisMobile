@@ -1,13 +1,19 @@
 package com.goyimatica.synaxismobile.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,7 +22,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
@@ -28,10 +36,12 @@ import com.goyimatica.synaxismobile.ui.components.ContinueCard
 import com.goyimatica.synaxismobile.ui.components.EmptyNote
 import com.goyimatica.synaxismobile.ui.components.FastCard
 import com.goyimatica.synaxismobile.ui.components.FeastCard
+import com.goyimatica.synaxismobile.ui.components.Pressable
 import com.goyimatica.synaxismobile.ui.components.QuoteCard
 import com.goyimatica.synaxismobile.ui.components.SaintCard
 import com.goyimatica.synaxismobile.ui.components.ScreenHeader
 import com.goyimatica.synaxismobile.ui.components.SectionLabel
+import com.goyimatica.synaxismobile.ui.theme.Syn
 import com.goyimatica.synaxismobile.ui.toCalStyle
 import kotlinx.coroutines.delay
 import java.time.Duration
@@ -84,6 +94,20 @@ fun TodayScreen(
             .filter { settings.showPending || !it.pending }
     }
 
+    /*
+     * V8: the article behind today's fast.
+     *
+     * The rule's own words first - "Dormition Fast", "Great Lent" - then the
+     * season, then plain "Fasting", which every day of the year can answer to.
+     * If the harvester has not been run yet all three miss, the row is not
+     * drawn, and nothing else on the screen notices.
+     */
+    val fastTopic = remember(facts.rule.label, facts.season, SaintsRepo.count) {
+        SaintsRepo.topicFor(facts.rule.label)
+            ?: SaintsRepo.topicFor(facts.season)
+            ?: SaintsRepo.topicFor("Fasting")
+    }
+
     val continuing = remember(library.recents) {
         library.recents
             .sortedByDescending { it.at }
@@ -133,13 +157,35 @@ fun TodayScreen(
             )
         }
 
+        if (fastTopic != null) {
+            item("fast-read") {
+                ReadAbout(
+                    label = "Read about " + fastTopic.name,
+                    onClick = { onOpenSaint(fastTopic.id) },
+                )
+            }
+        }
+
         if (facts.feasts.isNotEmpty()) {
             item("feast-label") {
                 Spacer(Modifier.height(4.dp))
                 SectionLabel(if (facts.feasts.size == 1) "The feast" else "The feasts")
             }
             items(facts.feasts, key = { "f-" + it.name }) { feast ->
-                FeastCard(feast = feast)
+                /* V8: a feast is a door. If an article exists for it, the card
+                   opens it; if not, it is the plain card it always was. */
+                val topic = SaintsRepo.topicFor(feast.name)
+                if (topic == null) {
+                    FeastCard(feast = feast)
+                } else {
+                    Pressable(
+                        onClick = { onOpenSaint(topic.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        down = 0.985f,
+                    ) {
+                        FeastCard(feast = feast)
+                    }
+                }
             }
         }
 
@@ -186,11 +232,33 @@ fun TodayScreen(
         item("tail") {
             Spacer(Modifier.height(8.dp))
             Text(
-                text = SaintsRepo.count.toString() + " lives \u00B7 " +
+                text = SaintsRepo.saintCount.toString() + " lives \u00B7 " +
+                    SaintsRepo.subjects().size + " feasts and subjects \u00B7 " +
                     QuotesRepo.count + " sayings",
                 style = MaterialTheme.typography.labelSmall,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.outline,
+                color = Syn.colors.faint,
             )
+        }
+    }
+}
+
+/** One quiet row that says a thing can be read, and opens it. */
+@Composable
+private fun ReadAbout(label: String, onClick: () -> Unit) {
+    val c = Syn.colors
+    Pressable(onClick = onClick, modifier = Modifier.fillMaxWidth(), down = 0.985f) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(c.surface)
+                .border(1.dp, c.rule, RoundedCornerShape(12.dp))
+                .padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(label, style = MaterialTheme.typography.titleMedium, color = c.text)
+            Text("Read", style = MaterialTheme.typography.labelLarge, color = c.gold)
         }
     }
 }

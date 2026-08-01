@@ -115,6 +115,11 @@ fun SettingsScreen(onBack: () -> Unit) {
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            item("font") {
+                FontSection()
+                Spacer(Modifier.height(28.dp))
+            }
+
             item("r-label") { SectionLabel("Reading") }
 
             item("specimen") {

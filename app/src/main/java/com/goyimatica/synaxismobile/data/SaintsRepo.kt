@@ -7,25 +7,29 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * The whole synaxarion, held in memory. Loaded once from assets on first use;
- * every read after that is a map lookup.
+ * The whole index, held in memory and indexed once at load.
  *
- * In the browser this work was scattered through app.js - filtering the array
- * again on every keystroke, rebuilding the feast index on every calendar day
- * change. Here the indexes are built once, at load.
+ * V8: the index is no longer only saints. `all()` is everything, because the
+ * Lives screen, the search and the startup download all want everything;
+ * `onFeast` is only saints, because a feast article is not a person and has
+ * no business in "commemorated today".
  */
 object SaintsRepo {
 
     private val mutex = Mutex()
 
     @Volatile
-    private var saints: List<Saint> = emptyList()
+    private var entries: List<Saint> = emptyList()
 
     private var byId: Map<String, Saint> = emptyMap()
     private var byFeast: Map<String, List<Saint>> = emptyMap()
+    private var byTitle: Map<String, Saint> = emptyMap()
 
-    val isLoaded: Boolean get() = saints.isNotEmpty()
-    val count: Int get() = saints.size
+    val isLoaded: Boolean get() = entries.isNotEmpty()
+    val count: Int get() = entries.size
+
+    /** Just the people. What the app means when it says "lives". */
+    val saintCount: Int get() = entries.count { it.isSaint }
 
     suspend fun load(context: Context) {
         if (isLoaded) return
@@ -37,34 +41,63 @@ object SaintsRepo {
                     .use { it.readText() }
                 Saint.listFrom(json)
             }
-            saints = parsed
+            entries = parsed
             byId = parsed.associateBy { it.id }
             byFeast = parsed
-                .filter { it.hasFeast }
+                .filter { it.hasFeast && it.isSaint }
                 .groupBy { it.feast!! }
+
+            /* Every way an article might be named, pointing at its entry:
+               the display name, and the wiki title it was harvested under.
+               This is what lets a feast card find something to open. */
+            val titles = HashMap<String, Saint>(parsed.size * 2)
+            parsed.forEach { s ->
+                if (!s.isSaint) {
+                    titles[s.name.lowercase()] = s
+                    if (s.owTitle.isNotBlank()) titles[s.owTitle.lowercase()] = s
+                }
+            }
+            byTitle = titles
         }
     }
 
-    fun all(): List<Saint> = saints
+    fun all(): List<Saint> = entries
+
+    fun saints(): List<Saint> = entries.filter { it.isSaint }
+
+    fun subjects(): List<Saint> = entries.filter { !it.isSaint }
 
     fun byId(id: String?): Saint? = if (id == null) null else byId[id]
 
-    /** Everyone commemorated on a church-calendar "MM-DD". */
+    /** Everyone commemorated on a church-calendar "MM-DD". Saints only. */
     fun onFeast(churchKey: String): List<Saint> = byFeast[churchKey] ?: emptyList()
 
+    /**
+     * The article behind a feast name, a fast name or a season.
+     *
+     * Exact match first, then the longest subject whose name is contained in
+     * what we were given - so "The Dormition Fast - wine and oil" finds
+     * "Dormition Fast", and "Week 9 after Pentecost" finds "Pentecost".
+     */
+    fun topicFor(text: String?): Saint? {
+        if (text.isNullOrBlank()) return null
+        val t = text.lowercase()
+        byTitle[t]?.let { return it }
+        return byTitle.entries
+            .filter { it.key.length >= 5 && t.contains(it.key) }
+            .maxByOrNull { it.key.length }
+            ?.value
+    }
+
     fun eras(): List<String> =
-        saints.map { it.era }.filter { it.isNotBlank() }.distinct().sorted()
+        entries.map { it.era }.filter { it.isNotBlank() }.distinct().sorted()
 
     fun jurisdictions(): List<String> =
-        saints.map { it.jurisdiction }.filter { it.isNotBlank() }.distinct().sorted()
+        entries.map { it.jurisdiction }.filter { it.isNotBlank() }.distinct().sorted()
 
     fun tags(): List<String> =
-        saints.flatMap { it.tags }.distinct().sorted()
+        entries.flatMap { it.tags }.distinct().sorted()
 
-    /**
-     * One pass, all four filters. An empty or null argument means "no opinion",
-     * so the Lives screen can pass whatever the user has actually chosen.
-     */
     fun filter(
         query: String? = null,
         era: String? = null,
@@ -74,9 +107,9 @@ object SaintsRepo {
         val q = query?.trim()?.lowercase().orEmpty()
         if (q.isEmpty() && era.isNullOrBlank() &&
             jurisdiction.isNullOrBlank() && tag.isNullOrBlank()
-        ) return saints
+        ) return entries
 
-        return saints.filter { s ->
+        return entries.filter { s ->
             (era.isNullOrBlank() || s.era == era) &&
                 (jurisdiction.isNullOrBlank() || s.jurisdiction == jurisdiction) &&
                 (tag.isNullOrBlank() || s.tags.contains(tag)) &&
@@ -84,15 +117,10 @@ object SaintsRepo {
         }
     }
 
-    /**
-     * Search, ranked: a name that starts with the term first, then a name that
-     * contains it, then anything else that matches. Same order of preference
-     * the web search had, done in one sort rather than three passes.
-     */
     fun search(query: String, limit: Int = 60): List<Saint> {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return emptyList()
-        return saints
+        return entries
             .mapNotNull { s ->
                 val n = s.name.lowercase()
                 val rank = when {
@@ -108,8 +136,7 @@ object SaintsRepo {
             .map { it.second }
     }
 
-    /** Alphabetical, grouped under initials, for the Lives index. */
-    fun grouped(list: List<Saint> = saints): List<Pair<Char, List<Saint>>> =
+    fun grouped(list: List<Saint> = entries): List<Pair<Char, List<Saint>>> =
         list.sortedBy { it.name }
             .groupBy { it.initial }
             .toSortedMap()

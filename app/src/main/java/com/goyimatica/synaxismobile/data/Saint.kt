@@ -4,20 +4,24 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * One life. The field names are spelled out here rather than kept as the web
- * app's one-letter keys; the JSON on disk still uses the short names, so the
- * two data sets stay interchangeable.
+ * One entry in the index.
  *
  *   n   -> name          "Seraphim of Sarov"
  *   e   -> epithet       "Wonderworker of All Russia"
- *   f   -> feast         "01-02" on the CHURCH calendar, or null if movable
- *   fl  -> feastLabel    words for a movable or unusual commemoration
- *   era -> era           "Patristic", "Modern", ...
+ *   f   -> feast         "01-02" on the CHURCH calendar, or null
+ *   fl  -> feastLabel    words for a movable commemoration
+ *   era -> era           "Patristic", "Modern", "The fasts", ...
  *   j   -> jurisdiction  "Russian", "Greek", "ROCOR", ...
  *   w   -> wikiTitle     exact Wikipedia article title
  *   o   -> owTitle       exact OrthodoxWiki article title
- *   b   -> tags          "Monastic", "Martyr", "Bishop", ...
- *   c   -> century       "19th"
+ *   b   -> tags
+ *   c   -> century
+ *   k   -> kind          "saint", "feast", "fast" or "topic"
+ *
+ * V8: `kind`. A feast, a fast and a subject are fetched, cached, read,
+ * highlighted and bookmarked by exactly the same machinery as a life - the
+ * only thing the field changes is how the app talks about the entry and
+ * where it is allowed to appear.
  */
 data class Saint(
     val id: String,
@@ -32,7 +36,8 @@ data class Saint(
     val tags: List<String>,
     val century: String?,
     val note: String?,
-    val pending: Boolean
+    val pending: Boolean,
+    val kind: String = KIND_SAINT,
 ) {
 
     /** "Seraphim of Sarov, Wonderworker of All Russia" */
@@ -41,23 +46,36 @@ data class Saint(
 
     val hasFeast: Boolean get() = !feast.isNullOrBlank()
 
-    /** Words for the feast, whether it is a date or a movable commemoration. */
+    val isSaint: Boolean get() = kind == KIND_SAINT
+
+    /** "Life", "Feast", "Fast", "Subject" - what to call this thing. */
+    val kindWord: String
+        get() = when (kind) {
+            KIND_FEAST -> "Feast"
+            KIND_FAST -> "Fast"
+            KIND_TOPIC -> "Subject"
+            else -> "Life"
+        }
+
     fun feastText(): String = when {
         !feastLabel.isNullOrBlank() -> feastLabel
         !feast.isNullOrBlank() -> monthDay(feast)
         else -> ""
     }
 
-    /** Letter this saint files under in the alphabetical list. */
     val initial: Char
         get() = name.firstOrNull { it.isLetter() }?.uppercaseChar() ?: '\u00b7'
 
-    /** Lower-cased haystack, built once per saint, searched many times. */
     internal val haystack: String =
         (name + ' ' + epithet + ' ' + era + ' ' + jurisdiction + ' ' +
             tags.joinToString(" ") + ' ' + (century ?: "")).lowercase()
 
     companion object {
+
+        const val KIND_SAINT = "saint"
+        const val KIND_FEAST = "feast"
+        const val KIND_FAST = "fast"
+        const val KIND_TOPIC = "topic"
 
         private val MONTHS = arrayOf(
             "January", "February", "March", "April", "May", "June",
@@ -87,7 +105,8 @@ data class Saint(
             tags = o.optJSONArray("b").toStringList(),
             century = o.optStringOrNull("c"),
             note = o.optStringOrNull("note"),
-            pending = o.optBoolean("pending", false)
+            pending = o.optBoolean("pending", false),
+            kind = o.optStringOrNull("k") ?: KIND_SAINT,
         )
 
         fun listFrom(json: String): List<Saint> {
