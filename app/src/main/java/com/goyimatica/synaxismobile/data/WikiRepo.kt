@@ -1,8 +1,8 @@
 package com.goyimatica.synaxismobile.data
 
 import android.content.Context
-import android.util.Log
 import androidx.compose.runtime.mutableStateMapOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,17 +22,30 @@ import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
+/*
+ * A life as kept on this phone.
+ *
+ * V10: two sources. `full` is whichever article read better and is what
+ * earlier versions stored; `fullOw` and `fullWp` are the OrthodoxWiki and
+ * Wikipedia texts themselves, so the reader can offer either one offline.
+ * `both` says the two-source pass has run for this entry - a blank source
+ * then means that wiki genuinely has nothing on the subject, not that the
+ * entry was fetched by an older build.
+ */
 data class Doc(
     val id: String,
     val title: String,
     val intro: String,
     val full: String,
+    val fullOw: String,
+    val fullWp: String,
     val image: String,
     val imageFull: String,
     val wikiUrl: String,
     val fromOrthodoxWiki: Boolean,
     val missing: Boolean,
     val at: Long,
+    val both: Boolean = true,
 )
 
 object WikiRepo {
@@ -42,12 +55,12 @@ object WikiRepo {
     const val COMMONS_API = "https://commons.wikimedia.org/w/api.php"
     const val AGENT = Images.AGENT
 
-    private const val TAG = "SynaxisImages"
-
     private const val THUMB = 1600
     private const val PARALLEL = 12
     private const val WEEK = 7L * 24L * 60L * 60L * 1000L
 
+    /* V10: fetched from filesDir, not cacheDir. The OS may clear cacheDir
+       whenever it pleases; these lives are meant to stay on the phone. */
     private var dir: File? = null
 
     private val mem = ConcurrentHashMap<String, Doc>(64)
@@ -63,7 +76,7 @@ object WikiRepo {
 
     fun init(context: Context) {
         if (dir != null) return
-        dir = File(context.cacheDir, "docs").apply { mkdirs() }
+        dir = File(context.filesDir, "docs").apply { mkdirs() }
         scope.launch { indexThumbs() }
     }
 
@@ -95,12 +108,15 @@ object WikiRepo {
                 title = o.optString("title"),
                 intro = o.optString("intro"),
                 full = o.optString("full"),
+                fullOw = o.optString("fullOw"),
+                fullWp = o.optString("fullWp"),
                 image = o.optString("image"),
                 imageFull = o.optString("imageFull"),
                 wikiUrl = o.optString("wikiUrl"),
                 fromOrthodoxWiki = o.optBoolean("fromOrthodoxWiki"),
                 missing = o.optBoolean("missing"),
                 at = o.optLong("at"),
+                both = o.optBoolean("both", true),
             )
         }.getOrNull()?.also {
             mem[id] = it
@@ -113,6 +129,8 @@ object WikiRepo {
      *
      * An entry with no picture anywhere would otherwise be hunted again on
      * every single launch, so a fruitless search is repeated once a week.
+     * A cache written by a pre-V10 build has no `both` flag, so it is fetched
+     * once more to fill in the second source.
      */
     suspend fun pending(saints: List<Saint>): List<Saint> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
@@ -120,6 +138,7 @@ object WikiRepo {
             val d = cached(s.id)
             when {
                 d == null -> true
+                !d.both -> true
                 d.missing -> now - d.at > WEEK
                 d.full.length < 600 -> true
                 d.image.isBlank() -> now - d.at > WEEK
@@ -138,12 +157,15 @@ object WikiRepo {
                 .put("title", doc.title)
                 .put("intro", doc.intro)
                 .put("full", doc.full)
+                .put("fullOw", doc.fullOw)
+                .put("fullWp", doc.fullWp)
                 .put("image", doc.image)
                 .put("imageFull", doc.imageFull)
                 .put("wikiUrl", doc.wikiUrl)
                 .put("fromOrthodoxWiki", doc.fromOrthodoxWiki)
                 .put("missing", doc.missing)
                 .put("at", doc.at)
+                .put("both", doc.both)
             f.writeText(o.toString())
         }
     }
@@ -169,20 +191,44 @@ object WikiRepo {
 
     /* ---- http ------------------------------------------------------------ */
 
-    private fun get(url: String): String? = runCatching {
-        val request = Request.Builder()
-            .url(url)
-            .header("Accept", "application/json")
-            .build()
-        Images.http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                Log.i(TAG, "http " + response.code + " for " + url)
+    /*
+     * One polite, resilient caller.
+     *
+     * Wikimedia throttles with 429 and breaks with 5xx; both are worth one
+     * or two retries with a short pause, because a single refused request
+     * used to cost a saint its picture for the whole session. Nothing else
+     * is retried. The URL is never logged - it is a record of what you read.
+     */
+    private fun get(url: String): String? {
+        var attempt = 0
+        while (attempt < 3) {
+            attempt++
+            var retryable = false
+            val result = try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/json")
+                    .build()
+                Images.http.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        response.body?.string()
+                    } else {
+                        retryable = response.code == 429 || response.code in 500..599
+                        null
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                retryable = true
                 null
-            } else {
-                response.body?.string()
             }
+            if (result != null) return result
+            if (!retryable || attempt >= 3) return null
+            Thread.sleep(400L * attempt)
         }
-    }.getOrNull()
+        return null
+    }
 
     private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
@@ -244,7 +290,6 @@ object WikiRepo {
         val found = searchTitle(WP_API, first) ?: searchTitle(WP_API, saint.name)
         val out = if (found != null && related(found, saint.name)) found else ""
         resolvedWp[saint.id] = out
-        Log.i(TAG, saint.id + ": wikipedia -> " + (if (out.isBlank()) "nothing" else out))
         return out
     }
 
@@ -395,47 +440,52 @@ object WikiRepo {
     private fun findPicture(saint: Saint): Pair<String, String>? {
         val ow = saint.owTitle.ifBlank { saint.name }
 
-        pageImage(OW_API, ow)?.let { Log.i(TAG, saint.id + ": orthodoxwiki pageimage"); return it }
-        embeddedImage(OW_API, ow)?.let { Log.i(TAG, saint.id + ": orthodoxwiki file"); return it }
+        pageImage(OW_API, ow)?.let { return it }
+        embeddedImage(OW_API, ow)?.let { return it }
 
         val wp = wpTitleFor(saint)
         if (wp.isNotBlank()) {
-            pageImage(WP_API, wp)?.let { Log.i(TAG, saint.id + ": wikipedia pageimage"); return it }
-            embeddedImage(WP_API, wp)?.let { Log.i(TAG, saint.id + ": wikipedia file"); return it }
+            pageImage(WP_API, wp)?.let { return it }
+            embeddedImage(WP_API, wp)?.let { return it }
         }
 
         /* A blind search of Commons is a last resort for a person and for
            nobody else. A subject either has the picture on its own article
            or it goes without one, which is far better than a wrong one. */
         if (saint.isSaint) {
-            commonsImage(saint.name)?.let { Log.i(TAG, saint.id + ": commons search"); return it }
+            commonsImage(saint.name)?.let { return it }
         }
 
-        Log.i(TAG, saint.id + ": no picture found (ow=" + ow + " wp=" + wp + ")")
         return null
     }
 
     /* ---- the article ------------------------------------------------------ */
 
-    private fun bodyFor(saint: Saint): Triple<String, Boolean, String> {
+    /**
+     * Both articles, cleaned, as a pair of (orthodoxWiki, wikipedia) texts.
+     * A blank side is honest: that wiki has nothing on this subject.
+     */
+    private fun bodyFor(saint: Saint): Pair<String, String> {
         val ow = saint.owTitle.ifBlank { saint.name }
-        val fromOw = pageText(OW_API, ow)
+        val fromOw = tidy(pageText(OW_API, ow))
 
-        /* Wikipedia is consulted when OrthodoxWiki was thin or silent, which
-           is the case for most subjects. The title is searched for if the
-           entry never carried one. */
         var wp = saint.wikiTitle
         var fromWp = ""
-        if (fromOw.length < 600) {
-            if (wp.isBlank()) wp = wpTitleFor(saint)
-            fromWp = pageText(WP_API, wp)
-        }
+        if (wp.isBlank()) wp = wpTitleFor(saint)
+        fromWp = tidy(pageText(WP_API, wp))
 
-        val useWp = fromOw.isBlank() || fromWp.length > (fromOw.length * 3) / 2
-        val chosen = if (useWp) fromWp else fromOw
-        val host = if (useWp) "https://en.wikipedia.org/wiki/" else "https://orthodoxwiki.org/"
-        val link = host + enc(if (useWp) wp else ow)
-        return Triple(tidy(chosen), !useWp, if (chosen.isBlank()) "" else link)
+        return Pair(fromOw, fromWp)
+    }
+
+    /**
+     * The fuller of the two, as before V10. Wikipedia wins only when it is
+     * clearly richer, because for a life the OrthodoxWiki telling is usually
+     * the better one; the reader can still switch to the other at will.
+     */
+    private fun prefer(ow: String, wp: String): Boolean {
+        if (ow.isBlank()) return true
+        if (wp.isBlank()) return false
+        return wp.length > (ow.length * 3) / 2
     }
 
     suspend fun doc(saint: Saint, force: Boolean = false): Doc? = withContext(Dispatchers.IO) {
@@ -444,19 +494,23 @@ object WikiRepo {
 
         val goodText = (old?.full?.length ?: 0) >= 600
         val goodPicture = !old?.image.isNullOrBlank()
-        if (!force && old != null && goodText && goodPicture) return@withContext old
+        if (!force && old != null && goodText && goodPicture && old.both) return@withContext old
 
-        val body: String
-        val fromOw: Boolean
+        val ow: String
+        val wp: String
         val url: String
-        if (force || !goodText || old == null) {
-            val t = bodyFor(saint)
-            body = t.first
-            fromOw = t.second
-            url = t.third
+        if (force || old == null || !goodText || !old.both) {
+            val both = bodyFor(saint)
+            ow = both.first
+            wp = both.second
+            val useWp = prefer(ow, wp)
+            val host = if (useWp) "https://en.wikipedia.org/wiki/" else "https://orthodoxwiki.org/"
+            val title = if (useWp) wpTitleFor(saint) else saint.owTitle.ifBlank { saint.name }
+            url = if ((if (useWp) wp else ow).isBlank()) "" else host + enc(title)
         } else {
-            body = old.full
-            fromOw = old.fromOrthodoxWiki
+            /* Good text, missing picture: keep the words, hunt only the icon. */
+            ow = old.fullOw
+            wp = old.fullWp
             url = old.wikiUrl
         }
 
@@ -464,7 +518,8 @@ object WikiRepo {
             if (force || !goodPicture || old == null) findPicture(saint)
             else Pair(old.image, old.imageFull)
 
-        val text = if (body.isNotBlank()) body else old?.full.orEmpty()
+        val useWp = prefer(ow, wp)
+        val text = (if (useWp) wp else ow).ifBlank { old?.full.orEmpty() }
         val intro = text.split("\n").firstOrNull { it.trim().length > 40 }?.trim().orEmpty()
 
         val fresh = Doc(
@@ -472,12 +527,15 @@ object WikiRepo {
             title = saint.display,
             intro = intro,
             full = text,
+            fullOw = ow,
+            fullWp = wp,
             image = picture?.first.orEmpty(),
             imageFull = picture?.second.orEmpty(),
             wikiUrl = url.ifBlank { old?.wikiUrl.orEmpty() },
-            fromOrthodoxWiki = fromOw,
+            fromOrthodoxWiki = !useWp,
             missing = text.isBlank(),
             at = System.currentTimeMillis(),
+            both = true,
         )
         save(fresh)
         fresh

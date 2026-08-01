@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
 /** A highlight or a note. Two integers and a colour, exactly as on the web. */
 data class Mark(
@@ -46,9 +47,11 @@ data class Mark(
             note = o.optStringOrNull("note")
         )
 
+        /* V10: UUID instead of Math.random. Keys are only ever local
+           identifiers, but a predictable key is still a needless foot-gun. */
         fun newKey(): String =
             "m" + java.lang.Long.toString(System.currentTimeMillis(), 36) +
-                java.lang.Long.toString((Math.random() * 1_679_616).toLong(), 36)
+                UUID.randomUUID().toString().replace("-", "").take(6)
     }
 }
 

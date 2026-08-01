@@ -3,7 +3,10 @@
     <cloud-backup>
         <include domain="file" path="." />
         <include domain="sharedpref" path="." />
+        <!-- Downloaded lives and icons can be re-fetched; keep the cloud
+             backup small. (V10: both now live in permanent storage.) -->
         <exclude domain="file" path="docs" />
+        <exclude domain="file" path="icons" />
     </cloud-backup>
 
     <device-transfer>

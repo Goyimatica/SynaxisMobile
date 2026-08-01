@@ -4,6 +4,8 @@
     <include domain="file" path="." />
     <include domain="sharedpref" path="." />
 
-    <!-- But not the downloaded lives; they can always be fetched again. -->
+    <!-- But not the downloaded lives or their icons; both can always be
+         fetched again, and both are now permanent on the device (V10). -->
     <exclude domain="file" path="docs" />
+    <exclude domain="file" path="icons" />
 </full-backup-content>

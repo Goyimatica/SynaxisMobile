@@ -58,7 +58,10 @@ object Images {
             }
             .diskCache {
                 DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("icons"))
+                    /* V10: filesDir, not cacheDir. The OS may clear cacheDir
+                       whenever it pleases; these icons are part of the
+                       downloaded lives and should stay on the phone. */
+                    .directory(context.filesDir.resolve("icons"))
                     .maxSizeBytes(128L * 1024 * 1024)
                     .build()
             }

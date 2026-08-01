@@ -66,6 +66,7 @@ import com.goyimatica.synaxismobile.ui.Motion
 import com.goyimatica.synaxismobile.ui.animFloat
 import com.goyimatica.synaxismobile.ui.components.EmptyNote
 import com.goyimatica.synaxismobile.ui.components.SectionLabel
+import com.goyimatica.synaxismobile.ui.components.SynChip
 import com.goyimatica.synaxismobile.ui.pressScale
 import com.goyimatica.synaxismobile.ui.rememberInteraction
 import com.goyimatica.synaxismobile.ui.reader.MarkSheet
@@ -100,6 +101,12 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
     val scroll = rememberScrollState()
     val marks = remember(library, saintId) { library.marksFor(saintId) }
 
+    /* V10: which article to show. Both are on the phone now; this picks one.
+       It resets to the richer one whenever a fresh download lands. */
+    var useWp by remember(saintId) { mutableStateOf(false) }
+    val d = doc
+    LaunchedEffect(d?.at) { useWp = d?.fromOrthodoxWiki == false }
+
     LaunchedEffect(saintId) {
         val s = saint ?: return@LaunchedEffect
         Store.touch(s.id)
@@ -127,12 +134,13 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
         return
     }
 
-    val d = doc
-    val body = remember(d) {
+    val body = remember(d, useWp) {
         when {
             d == null -> ""
-            d.hasFull -> d.full
-            else -> d.intro
+            !d.hasFull -> d.intro
+            useWp && d.fullWp.isNotBlank() -> d.fullWp
+            !useWp && d.fullOw.isNotBlank() -> d.fullOw
+            else -> d.full
         }
     }
 
@@ -215,6 +223,25 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = c.faint,
             )
+
+            /* ---- two sources, one reader (V10) ----
+               Only when both wikis actually have an article; otherwise the
+               toggle would offer nothing to switch to. */
+            if (d != null && d.fullOw.isNotBlank() && d.fullWp.isNotBlank()) {
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SynChip(
+                        text = "OrthodoxWiki",
+                        selected = !useWp,
+                        onClick = { useWp = false },
+                    )
+                    SynChip(
+                        text = "Wikipedia",
+                        selected = useWp,
+                        onClick = { useWp = true },
+                    )
+                }
+            }
 
             /* ---- the icon ----
                V7.1: the reader gets the original file, not the thumbnail.
@@ -355,9 +382,15 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
                 Spacer(Modifier.height(30.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.rule))
                 Spacer(Modifier.height(16.dp))
+                val shownSource = when {
+                    useWp && d.fullWp.isNotBlank() -> "Wikipedia"
+                    !useWp && d.fullOw.isNotBlank() -> "OrthodoxWiki"
+                    d.fromOrthodoxWiki -> "OrthodoxWiki"
+                    else -> "Wikipedia"
+                }
+                val shownWords = body.trim().split(Regex("\\s+")).count { it.isNotBlank() }
                 Text(
-                    (if (d.fromOrthodoxWiki) "From OrthodoxWiki" else "From Wikipedia") +
-                        " · " + d.words + " words" +
+                    "From " + shownSource + " · " + shownWords + " words" +
                         (if (marks.isNotEmpty()) " · " + marks.size + " highlighted" else ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = c.faint,

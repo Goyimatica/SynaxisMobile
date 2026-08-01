@@ -35,8 +35,8 @@ android {
         targetSdk = 37
 
         // CI passes VERSION_CODE and VERSION_NAME from the tag; locally these win.
-        versionCode = (System.getenv("VERSION_CODE") ?: "6").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "6.0"
+        versionCode = (System.getenv("VERSION_CODE") ?: "7").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -63,11 +63,11 @@ android {
         }
         release {
             isDebuggable = false
-            /* R8 stays off on purpose - Coil 3 finds its network fetcher
-               through a service loader entry, and a mis-shrunk build fails at
-               runtime rather than at compile time. */
-            isMinifyEnabled = false
-            isShrinkResources = false
+            /* R8 is on. Coil 3 finds its network fetcher through a service
+               loader entry; proguard-rules.pro keeps that registration alive,
+               so a shrunk build still loads pictures. */
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -82,14 +82,13 @@ android {
 
     /* ---- lint ------------------------------------------------------------
      * lintVitalRelease runs automatically before a release APK is packaged
-     * and, by default, any fatal-severity finding aborts the build. That is
-     * the right default for a Play Store submission and the wrong one for a
-     * personal app you install yourself. Warnings still print; they no
-     * longer stand between you and an APK.
+     * and, by default, any fatal-severity finding aborts the build. Findings
+     * are still reported on every build, but they no longer stand between
+     * you and an APK.
      */
     lint {
         abortOnError = false
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
         warningsAsErrors = false
         disable += setOf("FullBackupContent")
     }
@@ -108,6 +107,27 @@ android {
 
     androidResources {
         noCompress += listOf("ttf")
+    }
+}
+
+/* ---- release without a key fails loudly --------------------------------
+ * The debug keystore is public knowledge - it ships with every Android
+ * Studio. Signing a release with it (the old fallback) would let anyone
+ * with the SDK publish an "update" over this app. So a release is now
+ * refused until a real key exists; only the debug variant may use it.
+ */
+tasks.configureEach {
+    if (name.startsWith("assembleRelease") ||
+        name.startsWith("bundleRelease") ||
+        name.startsWith("packageRelease")
+    ) {
+        doFirst {
+            check(canSignRelease) {
+                "Release builds need a signing key. Create keystore.properties " +
+                    "or set the SYNAXIS_STORE_FILE / SYNAXIS_STORE_PASSWORD / " +
+                    "SYNAXIS_KEY_ALIAS / SYNAXIS_KEY_PASSWORD environment variables."
+            }
+        }
     }
 }
 

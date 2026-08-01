@@ -1,7 +1,6 @@
 package com.goyimatica.synaxismobile.data
 
 import android.content.Context
-import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -22,7 +21,6 @@ import java.io.File
  */
 object Fonts {
 
-    private const val TAG = "SynaxisFonts"
     private const val CSS = "https://fonts.googleapis.com/css2"
 
     /*
@@ -126,8 +124,8 @@ object Fonts {
             return@withContext directFile(raw)
         }
 
-        val family = familyNameFrom(raw)
-        if (family.isBlank()) {
+        val family = safeName(familyNameFrom(raw))
+        if (family == null) {
             return@withContext Result.failure(Exception("Could not read a font name from that."))
         }
 
@@ -147,7 +145,7 @@ object Fonts {
         var saved = 0
         faces.forEach { face ->
             val bytes = download(face.url)
-            if (bytes != null && bytes.size > 2000) {
+            if (bytes != null && bytes.size > 2000 && isFont(bytes)) {
                 val target = File(folder, face.fileName())
                 runCatching { target.writeBytes(bytes) }.onSuccess { saved++ }
             }
@@ -160,20 +158,27 @@ object Fonts {
 
         built.remove(family)
         rescan()
-        Log.i(TAG, "installed " + family + " (" + saved + " files)")
         Result.success(family)
     }
 
     private fun directFile(url: String): Result<String> {
+        /* V10: https only. A font is binary we then feed to the type engine;
+           it must never have been touched by anything on the wire in clear. */
+        if (!url.startsWith("https://")) {
+            return Result.failure(Exception("Only https:// links can be downloaded."))
+        }
         val guessed = url.substringAfterLast('/')
             .substringBeforeLast('.')
             .replace('_', ' ')
             .replace('-', ' ')
             .trim()
-        val family = if (guessed.isBlank()) "Custom font" else guessed
+        val family = safeName(if (guessed.isBlank()) "Custom font" else guessed)
+            ?: return Result.failure(Exception("That name cannot be used for a folder."))
         val bytes = download(url)
             ?: return Result.failure(Exception("That link could not be downloaded."))
-        if (bytes.size < 2000) return Result.failure(Exception("That file is not a font."))
+        if (bytes.size < 2000 || !isFont(bytes)) {
+            return Result.failure(Exception("That file is not a font."))
+        }
 
         val folder = File(dir, family)
         if (!folder.exists()) folder.mkdirs()
@@ -183,6 +188,36 @@ object Fonts {
         built.remove(family)
         rescan()
         return Result.success(family)
+    }
+
+    /*
+     * A name that is safe to make a folder from. The folder name becomes a
+     * path segment, so it must not contain separators, dot-dots, or anything
+     * the shell would frown at; a real family name never does either. This is
+     * what keeps a pasted "..\..\.." a polite refusal instead of a walk out
+     * of the fonts directory.
+     */
+    private fun safeName(raw: String): String? {
+        var s = raw.trim()
+        if (s.isBlank() || s.length > 64) return null
+        if (s.any { it == '/' || it == '\\' || it == '\u0000' || it == '.' }) return null
+        if (s.contains("..")) return null
+        s = s.replace(Regex("[^A-Za-z0-9 +_-]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return s.ifBlank { null }
+    }
+
+    /** TrueType starts 00 01 00 00; OpenType with CFF starts OTTO. */
+    private fun isFont(bytes: ByteArray): Boolean {
+        if (bytes.size < 4) return false
+        val ttf = bytes[0] == 0.toByte() && bytes[1] == 1.toByte() &&
+            bytes[2] == 0.toByte() && bytes[3] == 0.toByte()
+        val otto = bytes[0] == 'O'.code.toByte() && bytes[1] == 'T'.code.toByte() &&
+            bytes[2] == 'T'.code.toByte() && bytes[3] == 'O'.code.toByte()
+        val ttcf = bytes[0] == 't'.code.toByte() && bytes[1] == 't'.code.toByte() &&
+            bytes[2] == 'c'.code.toByte() && bytes[3] == 'f'.code.toByte()
+        return ttf || otto || ttcf
     }
 
     /** "EB+Garamond" and "specimen/EB+Garamond" and "EB Garamond" all agree. */
@@ -243,6 +278,10 @@ object Fonts {
     }
 
     private fun download(url: String): ByteArray? {
+        /* The css2 urls are https, and directFile has already refused any
+           plain-http link, so everything that reaches the wire here is
+           https - by construction, not by luck. */
+        if (!url.startsWith("https://")) return null
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", LEGACY_AGENT)

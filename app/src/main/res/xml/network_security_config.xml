@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    V10: cleartext refused everywhere, explicitly. The platform already
+    blocks plain http at targetSdk 28+, but a declared policy survives
+    future target bumps and makes the intent visible in the manifest.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

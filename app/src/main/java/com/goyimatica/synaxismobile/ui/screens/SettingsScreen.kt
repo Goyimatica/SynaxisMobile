@@ -254,7 +254,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Syncing also fills in any icons that are missing.",
+                        "Both wikis are fetched for each life, and syncing also fills " +
+                            "in any icons that are missing.",
                         style = MaterialTheme.typography.labelSmall,
                         color = c.faint,
                     )
@@ -303,8 +304,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Lives are fetched from OrthodoxWiki, and from Wikipedia where " +
-                            "OrthodoxWiki is silent. Nothing here is written by a machine.",
+                        "Every life is fetched from both OrthodoxWiki and Wikipedia, " +
+                            "and kept on this phone. Nothing here is written by a machine.",
                         style = MaterialTheme.typography.bodySmall,
                         color = c.faint,
                     )
