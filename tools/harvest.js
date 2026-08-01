@@ -68,23 +68,35 @@ const BLOCK = new Set([
 	"translation of relics", "main page", "orthodox church", "feasts",
 	"saints", "other events", "cross procession", "adoration of the magi",
 	"commemoration of the shepherds", "magi", "shepherds"
-]);
+]);	/* Words that begin a phrase but are not part of the name. */
+	const GENERIC = new Set([
+		"saint", "st", "sts", "s", "martyr", "hieromartyr", "great-martyr",
+		"new-martyr", "new hieromartyr", "new hieroconfessor", "venerable",
+		"venerable-martyr", "virgin-martyr", "blessed", "righteous", "prophet",
+		"apostle", "holy", "hierarch", "abbot", "abbess", "monk", "nun", "hermit",
+		"anchorite", "fool-for-christ", "wonder-worker", "wonderworker", "priest",
+		"deacon", "bishop", "archbishop", "metropolitan", "patriarch", "elder",
+		"schemamonk", "archimandrite", "hieromonk", "protomartyr", "confessor",
+		"ascetic", "recluse", "unmercenary", "enlightener", "equal-to-the-apostles",
+		"first-called", "evangelist", "hierarchs", "martyrs", "saints", "monastics",
+		"ascetics", "hermits", "right-believing", "passion-bearer", "priestmonk",
+		"hierodeacon", "archpriest", "protopresbyter", "teacher", "founder",
+		"new", "newly", "the", "of", "and"
+	]);
 
-/* Words that begin a phrase but are not part of the name. */
-const GENERIC = new Set([
-	"saint", "st", "sts", "s", "martyr", "hieromartyr", "great-martyr",
-	"new-martyr", "new hieromartyr", "new hieroconfessor", "venerable",
-	"venerable-martyr", "virgin-martyr", "blessed", "righteous", "prophet",
-	"apostle", "holy", "hierarch", "abbot", "abbess", "monk", "nun", "hermit",
-	"anchorite", "fool-for-christ", "wonder-worker", "wonderworker", "priest",
-	"deacon", "bishop", "archbishop", "metropolitan", "patriarch", "elder",
-	"schemamonk", "archimandrite", "hieromonk", "protomartyr", "confessor",
-	"ascetic", "recluse", "unmercenary", "enlightener", "equal-to-the-apostles",
-	"first-called", "evangelist", "hierarchs", "martyrs", "saints", "monastics",
-	"ascetics", "hermits", "right-believing", "passion-bearer", "priestmonk",
-	"hierodeacon", "archpriest", "protopresbyter", "teacher", "founder",
-	"new", "newly", "the", "of", "and"
-]);
+	/* V11: a bare glossary word is never a commemoration, whatever its
+	   categories say - the CI run proved "Apostles" and "Archangel" slip
+	   through a category check, so they are refused by name here. Kept in
+	   step with tools/verify.js. */
+	const GLOSS = new Set([
+		"apostles", "archangel", "archimandrite", "asceticism", "cloud",
+		"evangelist", "geronta", "igumen", "miracle", "missionary", "novice",
+		"passion-bearer", "pope", "stylite", "wonderworker", "wonder-worker",
+		"the ladder of divine ascent", "ladder of divine ascent", "the faith",
+		"the feasts", "the fasts", "other events", "cross procession",
+		"adoration of the magi", "commemoration of the shepherds", "magi",
+		"shepherds"
+	]);
 
 /* Subjects, added as themselves - feasts, fasts and the faith. */
 const TOPICS = [
@@ -224,6 +236,7 @@ function nameFrom(seg) {
 	const lower = t.toLowerCase();
 	if (BLOCK.has(lower)) return null;
 	if (GENERIC.has(lower)) return null;
+	if (GLOSS.has(lower)) return null;
 
 	const words = t.split(/\s+/);
 	let i = 0;
@@ -415,6 +428,8 @@ async function main() {
 		const parts = split(title);
 		let id = slug(parts.name || title);
 		if (!id) return;
+		/* V11: an office is not a person - "Abbot of Iona" must not return. */
+		if (/^(abbot|abbess|archbishop|bishop|metropolitan|patriarch|priest|deacon|monk|nun|hermit|stylite|pope|elder|igumen|hegumen|archimandrite)\s+of\b/i.test(parts.name)) return;
 		const key = name ? dayOf.get(name[0].toLowerCase()) : null;
 		if (byId.has(id) && key) id = id + "-" + key.replace("-", "");
 		if (byId.has(id)) return;
