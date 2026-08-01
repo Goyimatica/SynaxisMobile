@@ -253,9 +253,14 @@ object Store {
 
     fun addMark(saintId: String, mark: Mark) = mutate { s ->
         val list = (s.marks[saintId] ?: emptyList())
-            // A new highlight swallows anything it fully covers, so dragging
-            // over three short highlights leaves one, not four overlapping.
-            .filterNot { it.start >= mark.start && it.end <= mark.end }
+            /* A new highlight swallows anything it fully covers on the SAME
+               source, so dragging over three short highlights leaves one,
+               not four overlapping. Marks on the other telling must never
+               be eaten: the same offsets mean different words there. */
+            .filterNot {
+                it.source == mark.source &&
+                    it.start >= mark.start && it.end <= mark.end
+            }
             .plus(mark)
             .sortedBy { it.start }
         s.copy(marks = s.marks + (saintId to list))
