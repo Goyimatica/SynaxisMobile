@@ -88,7 +88,7 @@ const BLOCK = new Set([
 	   say - the CI run proved "Apostles" and "Archangel" slip through a
 	   category check. The list itself is shared with verify.js and
 	   fill-gaps.js, so it can never drift out of step. */
-	const { GLOSS, OFFICE } = require("./glossary");
+	const { GLOSS, OFFICE, TITLE_BLOCK } = require("./glossary");
 
 /* Subjects, added as themselves - feasts, fasts and the faith. */
 const TOPICS = [
@@ -422,6 +422,8 @@ async function main() {
 		if (!id) return;
 		/* V11: an office is not a person - "Abbot of Iona" must not return. */
 		if (OFFICE.test(parts.name)) return;
+		/* V12: a known-wrong resolution must not return either. */
+		if (TITLE_BLOCK.has(parts.name.toLowerCase())) return;
 		const key = name ? dayOf.get(name[0].toLowerCase()) : null;
 		if (byId.has(id) && key) id = id + "-" + key.replace("-", "");
 		if (byId.has(id)) return;

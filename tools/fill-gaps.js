@@ -42,7 +42,7 @@ const NOT_PERSON = new RegExp([
 
 /* Glossary words and office titles live in one shared module with verify.js
    and harvest.js, so the lists can never drift apart again. */
-const { GLOSS, OFFICE } = require("./glossary");
+const { GLOSS, OFFICE, TITLE_BLOCK } = require("./glossary");
 
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
@@ -121,6 +121,7 @@ function main() {
 		if (!n || seen.has(lower)) return;
 		if (GLOSS.has(lower)) return;
 		if (OFFICE.test(n)) return;
+		if (TITLE_BLOCK.has(String(s.o || "").toLowerCase())) return;
 		if (known.has(lower) || known.has(String(s.o).toLowerCase())) return;
 		seen.add(lower);
 		candidates.push(s);

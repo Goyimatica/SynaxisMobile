@@ -37,4 +37,15 @@ const GLOSS = new Set([
  */
 const OFFICE = /^(abbot|abbess|archbishop|bishop|metropolitan|patriarch|priest|deacon|monk|nun|hermit|stylite|pope|elder|igumen|hegumen|archimandrite)\s+of\b/i;
 
-module.exports = { GLOSS, OFFICE };
+/*
+ * Titles that resolve wrong and must never be accepted, however much they
+ * look like a life. "Olga of Alaska" is the January 28 "Virgin-martyr Olga
+ * (1938)" mis-resolved to Matushka Olga Michael, who is already in the index
+ * as "Olga Michael" on 11-10. The CI harvest of 2026-08-01 re-added it;
+ * blocking it here keeps the CI output identical to the curated index.
+ */
+const TITLE_BLOCK = new Set([
+	"olga of alaska"
+]);
+
+module.exports = { GLOSS, OFFICE, TITLE_BLOCK };

@@ -20,7 +20,7 @@ const OUT = path.join(__dirname, "..", "app", "src", "main", "assets", "saints.j
 /* Glossary words and office titles live in one shared module with the
    harvest tools, so the three can never drift apart again - the CI run of
    2026-08-01 proved they had. */
-const { GLOSS, OFFICE } = require("./glossary");
+const { GLOSS, OFFICE, TITLE_BLOCK } = require("./glossary");
 
 const MONTHS_IN = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -49,6 +49,9 @@ const noTitle = people.filter(function (s) { return !s.o && !s.w; });
 
 const officeJunk = people.filter(function (s) {
 	return OFFICE.test(String(s.n).trim());
+});
+const blockedTitle = people.filter(function (s) {
+	return TITLE_BLOCK.has(String(s.o || "").toLowerCase());
 });
 const ids = new Set();
 let dupIds = 0;
@@ -79,6 +82,11 @@ line(junk.length === 0, "no glossary names as saints" +
 
 line(officeJunk.length === 0, "no office titles as saints" +
 	(officeJunk.length ? ";  " + officeJunk.map(function (s) {
+		return s.f + " " + s.n;
+	}).join(", ") : ""));
+
+line(blockedTitle.length === 0, "no known-wrong titles as saints" +
+	(blockedTitle.length ? ";  " + blockedTitle.map(function (s) {
 		return s.f + " " + s.n;
 	}).join(", ") : ""));
 
