@@ -56,7 +56,10 @@ object WikiRepo {
     const val AGENT = Images.AGENT
 
     private const val THUMB = 1600
-    private const val PARALLEL = 12
+    /* Twelve kept Wikimedia happy and the phone cool; the client below can
+       hold far more, so a whole library sync goes faster without touching
+       the two host limits per domain. */
+    private const val PARALLEL = 32
     private const val WEEK = 7L * 24L * 60L * 60L * 1000L
 
     /* V10: fetched from filesDir, not cacheDir. The OS may clear cacheDir

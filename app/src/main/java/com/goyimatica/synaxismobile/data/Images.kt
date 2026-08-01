@@ -7,6 +7,7 @@ import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -30,10 +31,11 @@ object Images {
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(25, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .connectionPool(ConnectionPool(32, 5, TimeUnit.MINUTES))
             .dispatcher(
                 Dispatcher().apply {
-                    maxRequests = 64
-                    maxRequestsPerHost = 16
+                    maxRequests = 128
+                    maxRequestsPerHost = 32
                 }
             )
             .addInterceptor { chain ->

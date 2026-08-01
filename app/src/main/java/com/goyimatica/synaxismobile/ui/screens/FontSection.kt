@@ -62,8 +62,12 @@ fun FontSection() {
 
     /* Reading Fonts.installed inside composition is what subscribes this
        screen to it - it is snapshot state, so a finished download redraws
-       the chips with nothing else asked of us. */
-    val families = listOf(BUILT_IN) + Fonts.installed.toList()
+       the chips with nothing else asked of us. The faces that shipped with
+       the app are listed as themselves, before anything downloaded. */
+    /* The bundled faces come first and win any name collision, so a
+       downloaded family called "Outfit" cannot double a chip. */
+    val families = (listOf(BUILT_IN, "Cormorant", "Noto Serif", "Outfit") +
+        Fonts.installed.toList()).distinct()
 
     Column(Modifier.fillMaxWidth()) {
 
@@ -103,7 +107,9 @@ fun FontSection() {
         Text("In the reader", style = MaterialTheme.typography.titleMedium, color = c.text)
         Spacer(Modifier.height(4.dp))
         Text(
-            "Built-in keeps whichever of Cormorant, Noto Serif or Inter you chose above.",
+            "Built-in follows whichever face you chose in the Reading section; pick " +
+                "Cormorant, Noto Serif or Outfit here to keep the reader in one voice " +
+                "while the rest of the app wears another.",
             style = MaterialTheme.typography.bodySmall,
             color = c.faint,
         )

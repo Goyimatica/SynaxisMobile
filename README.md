@@ -51,7 +51,7 @@ date.
   without one.
 - 🎨 **Four palettes** — Night, Midnight, Sepia, and Parchment.
 - 🔤 **Fonts your way** — three built-in families (Cormorant, Noto Serif,
-  Inter) plus any Google Font you install by name or link.
+  Outfit) plus any Google Font you install by name or link.
 - 💾 **Offline-first** — every life and portrait you've synced is stored
   permanently on the device (not in the OS-wipeable cache).
 - 📚 **Two sources, one reader** — OrthodoxWiki and Wikipedia articles are

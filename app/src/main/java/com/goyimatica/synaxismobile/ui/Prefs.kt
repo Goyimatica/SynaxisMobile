@@ -7,7 +7,7 @@ import com.goyimatica.synaxismobile.ui.theme.ReadingFace
 import com.goyimatica.synaxismobile.ui.theme.ReadingPrefs
 
 val PALETTE_NAMES = listOf("Night", "Midnight", "Sepia", "Parchment")
-val FACE_NAMES = listOf("Cormorant", "Noto Serif", "Inter")
+val FACE_NAMES = listOf("Cormorant", "Noto Serif", "Outfit")
 val SIZE_NAMES = listOf("Small", "Medium", "Comfortable", "Large", "Largest")
 val LEAD_NAMES = listOf("Tight", "Normal", "Airy")
 val WEIGHT_NAMES = listOf("Regular", "Medium", "Semibold")

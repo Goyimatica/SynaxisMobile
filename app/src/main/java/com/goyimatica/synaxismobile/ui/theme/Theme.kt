@@ -131,11 +131,13 @@ fun SynaxisTheme(
     val settings by Store.settings.collectAsStateWithLifecycle()
     val installedCount = Fonts.installed.size
 
+    /* A bundled face is chosen by its name, so it is resolved before the
+       downloaded ones are consulted - the two never collide. */
     val uiFamily = remember(settings.uiFont, installedCount) {
-        Fonts.family(settings.uiFont) ?: DefaultUiFamily
+        bundledFamily(settings.uiFont) ?: Fonts.family(settings.uiFont) ?: DefaultUiFamily
     }
     val readerFamily = remember(settings.readerFont, reading.face, installedCount) {
-        Fonts.family(settings.readerFont) ?: familyFor(reading.face)
+        bundledFamily(settings.readerFont) ?: Fonts.family(settings.readerFont) ?: familyFor(reading.face)
     }
     val typography = remember(uiFamily) { synaxisTypography(uiFamily) }
 

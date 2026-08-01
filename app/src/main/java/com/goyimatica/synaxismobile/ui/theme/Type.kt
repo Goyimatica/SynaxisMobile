@@ -24,17 +24,30 @@ val NotoSerif = FontFamily(
     Font(R.font.noto_serif_italic, FontWeight.Normal, FontStyle.Italic),
 )
 
-val Inter = FontFamily(
-    Font(R.font.inter_regular, FontWeight.Normal),
-    Font(R.font.inter_medium, FontWeight.Medium),
+val Outfit = FontFamily(
+    Font(R.font.outfit_regular, FontWeight.Normal),
+    Font(R.font.outfit_medium, FontWeight.Medium),
 )
 
-enum class ReadingFace { CORMORANT, NOTO, SANS }
+enum class ReadingFace { CORMORANT, NOTO, OUTFIT }
 
 fun familyFor(f: ReadingFace): FontFamily = when (f) {
     ReadingFace.CORMORANT -> Cormorant
     ReadingFace.NOTO -> NotoSerif
-    ReadingFace.SANS -> Inter
+    ReadingFace.OUTFIT -> Outfit
+}
+
+/**
+ * A bundled face by its display name, so Settings can list the faces that
+ * came with the app in the same chips as the downloaded ones. The stored
+ * setting is the name string, so a face like "Outfit" resolves here before
+ * any downloaded family of the same name is even consulted.
+ */
+fun bundledFamily(name: String?): FontFamily? = when (name) {
+    "Cormorant" -> Cormorant
+    "Noto Serif" -> NotoSerif
+    "Outfit" -> Outfit
+    else -> null
 }
 
 /** What the app is set in when nothing has been downloaded. */

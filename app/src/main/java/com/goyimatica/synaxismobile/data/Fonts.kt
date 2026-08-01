@@ -7,9 +7,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /*
  * Fonts the user brings with them.
@@ -142,16 +146,23 @@ object Fonts {
         val folder = File(dir, family)
         if (!folder.exists()) folder.mkdirs()
 
-        var saved = 0
-        faces.forEach { face ->
-            val bytes = download(face.url)
-            if (bytes != null && bytes.size > 2000 && isFont(bytes)) {
-                val target = File(folder, face.fileName())
-                runCatching { target.writeBytes(bytes) }.onSuccess { saved++ }
-            }
+        /* All weights at once: a family is five files, and there is no reason
+           to queue them one after another. */
+        val saved = AtomicInteger(0)
+        coroutineScope {
+            faces.map { face ->
+                async {
+                    val bytes = download(face.url)
+                    if (bytes != null && bytes.size > 2000 && isFont(bytes)) {
+                        val target = File(folder, face.fileName())
+                        runCatching { target.writeBytes(bytes) }
+                            .onSuccess { saved.incrementAndGet() }
+                    }
+                }
+            }.awaitAll()
         }
 
-        if (saved == 0) {
+        if (saved.get() == 0) {
             folder.delete()
             return@withContext Result.failure(Exception("The download did not finish."))
         }

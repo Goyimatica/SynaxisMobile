@@ -1,15 +1,23 @@
 #!/usr/bin/env node
 /*
- * Synaxis - harvest OrthodoxWiki, carefully.  V9.
+ * Synaxis - harvest OrthodoxWiki, carefully.  V10.
  *
  *   node tools/harvest.js
  *
- * Two rules, both of which V8 lacked:
+ * V10 reads the day TEMPLATES, because a day page like "August 2" is now
+ * only a stub that transcludes {{August 2}} - the commemorations themselves
+ * live on the template, as prose rather than as bullets.
  *
- *   1. Only the FIRST link of each bullet line on a day page is a
- *      commemoration. Everything else on that line is a place, a see or a
- *      glossary word, and is ignored.
- *   2. Every candidate must then prove it is a person by its own categories.
+ * Three rules:
+ *
+ *   1. Each `;`-separated phrase of a day template names its subject before
+ *      the first comma. We take that head, strip the honourifics and the
+ *      markup, and are left with a name to go and find. Nothing else on the
+ *      phrase is a commemoration.
+ *   2. The name is resolved through OrthodoxWiki's own search, and only a
+ *      result that shares a substantial word with it is accepted - so
+ *      "Basil of Moscow" cannot resolve to "Basil the Great".
+ *   3. Every candidate must then prove it is a person by its own categories.
  *      Saints, martyrs, hierarchs, monastics, ascetics, apostles, prophets.
  *      Anything categorised as a feast, a fast, a place, a jurisdiction or a
  *      glossary entry is refused even if it also looks saintly.
@@ -22,7 +30,7 @@ const path = require("path");
 
 const OUT = path.join(__dirname, "..", "app", "src", "main", "assets", "saints.json");
 const API = "https://orthodoxwiki.org/api.php";
-const AGENT = "Synaxis/9.0 (Android reader; github.com/Goyimatica/SynaxisMobile)";
+const AGENT = "Synaxis/10.0 (Android reader; github.com/Goyimatica/SynaxisMobile)";
 
 const MONTHS = [
 	"January", "February", "March", "April", "May", "June",
@@ -55,7 +63,25 @@ const BLOCK = new Set([
 	"icon", "relics", "monastery", "cathedral", "church", "liturgy",
 	"vespers", "matins", "fasting", "great lent", "pascha", "theotokos",
 	"jesus christ", "holy trinity", "apostle", "prophet", "synaxis",
-	"translation of relics", "main page", "orthodox church"
+	"translation of relics", "main page", "orthodox church", "feasts",
+	"saints", "other events", "cross procession", "adoration of the magi",
+	"commemoration of the shepherds", "magi", "shepherds"
+]);
+
+/* Words that begin a phrase but are not part of the name. */
+const GENERIC = new Set([
+	"saint", "st", "sts", "s", "martyr", "hieromartyr", "great-martyr",
+	"new-martyr", "new hieromartyr", "new hieroconfessor", "venerable",
+	"venerable-martyr", "virgin-martyr", "blessed", "righteous", "prophet",
+	"apostle", "holy", "hierarch", "abbot", "abbess", "monk", "nun", "hermit",
+	"anchorite", "fool-for-christ", "wonder-worker", "wonderworker", "priest",
+	"deacon", "bishop", "archbishop", "metropolitan", "patriarch", "elder",
+	"schemamonk", "archimandrite", "hieromonk", "protomartyr", "confessor",
+	"ascetic", "recluse", "unmercenary", "enlightener", "equal-to-the-apostles",
+	"first-called", "evangelist", "hierarchs", "martyrs", "saints", "monastics",
+	"ascetics", "hermits", "right-believing", "passion-bearer", "priestmonk",
+	"hierodeacon", "archpriest", "protopresbyter", "teacher", "founder",
+	"new", "newly", "the", "of", "and"
 ]);
 
 /* Subjects, added as themselves - feasts, fasts and the faith. */
@@ -159,33 +185,105 @@ function slug(name) {
 		.slice(0, 48);
 }
 
-/* Rule one: the first link of each bullet, and nothing else. */
+/* ---- rule one: names out of prose ---------------------------------------- */
+
+/* "[[a|b]]" and "[[a]]" become their display text; bold and images go. */
+function stripLinks(s) {
+	return s
+		.replace(/\[\[(?:[^\]|]*\|)?([^\]]+)\]\]/g, "$1")
+		.replace(/'''/g, "")
+		.replace(/\[\[(?:Image|File):[^\]]*\]\]/g, "")
+		.replace(/\[\[w:[^\]]*\|?([^\]]*)\]\]/g, "$1")
+		.trim();
+}
+
+function cleanParens(s) {
+	return s
+		.replace(/\s*\(\d{3,4}[^)]*\)\s*$/, "")
+		.replace(/\s*\(\s*Fr\.[^)]*\)\s*/g, " ")
+		.replace(/\s*\([^)]*\)\s*$/, "")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+/* The name a phrase commemorates: its head up to the first comma, minus
+   the honourifics. A bare one-word name gets a little context from the
+   words that followed the comma, so "Stephen, Pope of Rome" resolves to
+   the right Stephen instead of the protomartyr. */
+function nameFrom(seg) {
+	let s = seg.replace(/<noinclude>.*$/s, "").trim();
+	const head = s.split(",")[0];
+	let t = cleanParens(stripLinks(head));
+
+	/* "'''Feasts''':" and friends - labels, not names. */
+	if (/^[\w ]+:$/.test(t)) return null;
+	if (t.length < 3) return null;
+
+	const lower = t.toLowerCase();
+	if (BLOCK.has(lower)) return null;
+	if (GENERIC.has(lower)) return null;
+
+	const words = t.split(/\s+/);
+	let i = 0;
+	while (i < words.length && GENERIC.has(words[i].toLowerCase().replace(/[^a-z-]/g, ""))) i++;
+	let name = words.slice(i).join(" ");
+	if (name.length < 3) return null;
+
+	/* A one-word name: pull "Pope of Rome" style context off the tail. */
+	if (name.split(/\s+/).length === 1) {
+		const rest = stripLinks(s.slice(head.length))
+			.replace(/^[,\s]+/, "")
+			.replace(/[\[:\]']/g, " ");
+		const extra = rest.split(/\s+/).filter(Boolean).slice(0, 3).join(" ");
+		if (extra.length > 2) name = name + " " + extra;
+	}
+
+	name = name.replace(/^of\s+/i, "").trim();
+	const first = name.split(/\s+/)[0].toLowerCase();
+	if (/^(of|the|and|at|in|with|for|a|an)$/.test(first)) return null;
+	if (name.split(/\s+/).length > 8) return null;
+	return name;
+}
+
 function commemorationsIn(text) {
 	const out = [];
-	const lines = String(text).split("\n");
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i].trim();
-		if (/^==+\s*(sources|see also|external links|notes|references)/i.test(line)) break;
-		if (line.charAt(0) !== "*") continue;
-		const hit = /\[\[([^\]|#]+)/.exec(line);
-		if (!hit) continue;
-		const title = hit[1].trim();
-		if (title.length < 4 || title.length > 90) continue;
-		if (title.indexOf(":") !== -1) continue;
-		if (/^\d/.test(title)) continue;
-		if (BLOCK.has(title.toLowerCase())) continue;
-		out.push(title);
+	const segments = String(text)
+		.split(/[;\n]+/)
+		.map(function (s) { return s.trim(); })
+		.filter(Boolean);
+	for (const seg of segments) {
+		const name = nameFrom(seg);
+		if (name) out.push(name);
 	}
 	return out;
 }
 
-async function wikitextOf(title) {
-	const j = await api("action=parse&prop=wikitext&page=" + encodeURIComponent(title));
-	if (!j || !j.parse || !j.parse.wikitext) return "";
-	return String(j.parse.wikitext);
+/* ---- rule two: make each name prove itself -------------------------------- */
+
+function bigWords(s) {
+	return s.toLowerCase().split(/[^a-z0-9]+/).filter(function (w) { return w.length > 3; });
 }
 
-/* Rule two: make each candidate prove itself, forty at a time. */
+function related(title, name) {
+	const words = bigWords(name);
+	if (words.length === 0) return true;
+	const t = title.toLowerCase();
+	return words.some(function (w) { return t.indexOf(w) !== -1; });
+}
+
+async function resolve(name) {
+	const j = await api(
+		"action=query&list=search&srnamespace=0&srlimit=4&srsearch=" + encodeURIComponent(name)
+	);
+	const arr = (j && j.query && j.query.search) || [];
+	for (const r of arr) {
+		const t = String(r.title);
+		if (!related(t, name)) continue;
+		return t;
+	}
+	return null;
+}
+
 async function verify(titles) {
 	const good = new Set();
 	for (let i = 0; i < titles.length; i += 40) {
@@ -225,6 +323,15 @@ function split(title) {
 	return { name: title.trim(), epithet: "" };
 }
 
+async function dayWikitext(dayTitle) {
+	const j = await api("action=parse&prop=wikitext&page=" +
+		encodeURIComponent("Template:" + dayTitle));
+	if (j && j.parse && j.parse.wikitext) return String(j.parse.wikitext);
+	const k = await api("action=parse&prop=wikitext&page=" + encodeURIComponent(dayTitle));
+	if (k && k.parse && k.parse.wikitext) return String(k.parse.wikitext);
+	return "";
+}
+
 async function main() {
 	if (typeof fetch !== "function") {
 		console.error("  x  this needs Node 18 or newer");
@@ -246,31 +353,49 @@ async function main() {
 
 	console.log("  .  starting from " + existing.length + " entries");
 
-	/* ---- 1. read the day pages ----------------------------------------- */
+	/* ---- 1. read the day templates -------------------------------------- */
 
-	const dayOf = new Map();   /* title -> "MM-DD" of the first day it is listed */
+	const dayOf = new Map();   /* name -> "MM-DD" of the first day it is listed */
 
 	for (let m = 0; m < 12; m++) {
 		for (let d = 1; d <= DAYS_IN[m]; d++) {
 			const dayTitle = MONTHS[m] + " " + d;
 			const key = pad(m + 1) + "-" + pad(d);
-			const text = await wikitextOf(dayTitle);
-			commemorationsIn(text).forEach(function (title) {
-				if (!dayOf.has(title)) dayOf.set(title, key);
+			const text = await dayWikitext(dayTitle);
+			commemorationsIn(text).forEach(function (name) {
+				const lower = name.toLowerCase();
+				if (!dayOf.has(lower)) dayOf.set(lower, key);
 			});
-			await sleep(110);
+			await sleep(90);
 		}
-		console.log("  .  " + MONTHS[m] + "  (" + dayOf.size + " candidates so far)");
+		console.log("  .  " + MONTHS[m] + "  (" + dayOf.size + " names so far)");
 	}
 
 	/* ---- 2. make them prove it ------------------------------------------ */
 
-	const candidates = Array.from(dayOf.keys())
-		.filter(function (t) { return !known.has(t.toLowerCase()); });
+	const names = Array.from(dayOf.keys())
+		.filter(function (n) { return !known.has(n.toLowerCase()); });
 
 	console.log("");
-	console.log("  .  " + candidates.length + " candidates to verify");
-	const verified = await verify(candidates);
+	console.log("  .  " + names.length + " names to resolve");
+
+	const resolved = new Map();   /* name -> article title */
+	for (let i = 0; i < names.length; i += 6) {
+		const slice = names.slice(i, i + 6);
+		await Promise.all(slice.map(async function (name) {
+			const t = await resolve(name);
+			if (t) resolved.set(name, t);
+		}));
+		await sleep(120);
+		if (i % 300 === 0) {
+			console.log("  .  resolved " + i + " of " + names.length +
+				"  (" + resolved.size + " found)");
+		}
+	}
+
+	const titles = Array.from(resolved.values());
+	console.log("  .  " + titles.length + " resolved to articles");
+	const verified = await verify(titles);
 	console.log("  .  " + verified.size + " of them are people");
 
 	/* ---- 3. build -------------------------------------------------------- */
@@ -282,10 +407,13 @@ async function main() {
 		if (known.has(lower)) return;
 		known.add(lower);
 
-		const key = dayOf.get(title) || null;
+		/* the name that resolved to this article, for the display name */
+		const name = Array.from(resolved.entries())
+			.find(function (e) { return e[1] === title; });
 		const parts = split(title);
-		let id = slug(title);
+		let id = slug(parts.name || title);
 		if (!id) return;
+		const key = name ? dayOf.get(name[0].toLowerCase()) : null;
 		if (byId.has(id) && key) id = id + "-" + key.replace("-", "");
 		if (byId.has(id)) return;
 

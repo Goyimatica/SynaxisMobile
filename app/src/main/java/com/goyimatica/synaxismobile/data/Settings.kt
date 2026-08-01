@@ -12,7 +12,7 @@ import android.content.SharedPreferences
  */
 data class Settings(
     val palette: Int = 0,          // 0 Night, 1 Midnight, 2 Sepia, 3 Parchment
-    val face: Int = 1,             // 0 Cormorant, 1 Noto Serif, 2 Inter
+    val face: Int = 1,             // 0 Cormorant, 1 Noto Serif, 2 Outfit
     val sizeStep: Int = 3,         // 1..5
     val leadStep: Int = 2,         // 1..3
     val weight: Int = 600,         // 400 regular, 500 medium, 600 semibold
