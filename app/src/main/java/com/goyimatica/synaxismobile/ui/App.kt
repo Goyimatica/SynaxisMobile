@@ -78,7 +78,7 @@ fun SynaxisApp() {
              * recomposition afterwards. Add lives to saints.json, ship a build,
              * and the next launch fetches exactly the new ones.
              */
-            SyncGate.runOnce(SaintsRepo.all())
+            SyncGate.runOnce(SaintsRepo.everything())
         }
 
         Surface(Modifier.fillMaxSize(), color = Syn.colors.bg) {

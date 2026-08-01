@@ -44,11 +44,7 @@ object WikiRepo {
 
     private const val TAG = "SynaxisImages"
 
-    /* V7.1: 1600px. Wikimedia renders thumbnails up to about 2000px happily;
-       1600 is sharper than any phone panel and still a fraction of the
-       original file, which for a scanned icon can be twenty megabytes. */
     private const val THUMB = 1600
-
     private const val PARALLEL = 12
     private const val WEEK = 7L * 24L * 60L * 60L * 1000L
 
@@ -57,6 +53,10 @@ object WikiRepo {
     private val mem = ConcurrentHashMap<String, Doc>(64)
     private val diskLock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /* V9.1: entry id -> the Wikipedia title we found for it, or "" if there
+       is none. Held for the session so a subject is never searched twice. */
+    private val resolvedWp = ConcurrentHashMap<String, String>()
 
     /** saint id -> picture URL, readable from any composable for free. */
     val thumbs = mutableStateMapOf<String, String>()
@@ -109,11 +109,10 @@ object WikiRepo {
     }
 
     /**
-     * Which lives the startup sync actually has to fetch.
+     * Which entries the startup sync actually has to fetch.
      *
-     * A saint with no picture anywhere on either wiki would otherwise be
-     * hunted again on every single launch, so a fruitless search is only
-     * repeated once a week.
+     * An entry with no picture anywhere would otherwise be hunted again on
+     * every single launch, so a fruitless search is repeated once a week.
      */
     suspend fun pending(saints: List<Saint>): List<Saint> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
@@ -163,6 +162,7 @@ object WikiRepo {
                 dir?.listFiles()?.forEach { it.delete() }
                 mem.clear()
                 thumbs.clear()
+                resolvedWp.clear()
             }
         }
     }
@@ -195,6 +195,57 @@ object WikiRepo {
         val pages = o?.optJSONObject("query")?.optJSONArray("pages") ?: return null
         if (pages.length() == 0) return null
         return pages.optJSONObject(0)
+    }
+
+    /* ---- is this the right article --------------------------------------- */
+
+    /*
+     * The rule that keeps a 1940 film poster off the All-Night Vigil.
+     *
+     * Any title a search hands back has to carry at least one substantial
+     * word of the name we searched for. Short words are ignored, because
+     * "of" and "the" would match everything; if a name has no long word at
+     * all the check passes, because there is nothing left to test it with.
+     */
+    private fun bigWords(s: String): List<String> =
+        s.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length > 3 }
+
+    private fun related(title: String, name: String): Boolean {
+        val words = bigWords(name)
+        if (words.isEmpty()) return true
+        val t = title.lowercase()
+        return words.any { t.contains(it) }
+    }
+
+    private fun searchTitle(base: String, query: String): String? {
+        val o = api(
+            base,
+            "action=query&list=search&srnamespace=0&srlimit=1&srsearch=" + enc(query),
+        )
+        val arr = o?.optJSONObject("query")?.optJSONArray("search") ?: return null
+        if (arr.length() == 0) return null
+        val t = arr.optJSONObject(0)?.optString("title").orEmpty()
+        return t.ifBlank { null }
+    }
+
+    /**
+     * The Wikipedia article for an entry that was never given one.
+     *
+     * Every harvested saint and every subject has an empty `w`, which under
+     * V8 meant there was no second place to look when OrthodoxWiki came up
+     * short - and that is exactly why "Desert Fathers" opened with nothing
+     * in it. One search, checked against the name, remembered for the run.
+     */
+    private fun wpTitleFor(saint: Saint): String {
+        if (saint.wikiTitle.isNotBlank()) return saint.wikiTitle
+        resolvedWp[saint.id]?.let { return it }
+
+        val first = if (saint.isSaint) saint.display else saint.name + " Eastern Orthodox"
+        val found = searchTitle(WP_API, first) ?: searchTitle(WP_API, saint.name)
+        val out = if (found != null && related(found, saint.name)) found else ""
+        resolvedWp[saint.id] = out
+        Log.i(TAG, saint.id + ": wikipedia -> " + (if (out.isBlank()) "nothing" else out))
+        return out
     }
 
     /* ---- text ------------------------------------------------------------ */
@@ -253,6 +304,14 @@ object WikiRepo {
         return cleaned.ifBlank { null }
     }
 
+    /** The article as prose: the plain extract, or the wikitext if it is thin. */
+    private fun pageText(base: String, title: String): String {
+        if (title.isBlank()) return ""
+        val extract = extractOf(base, title).orEmpty()
+        if (extract.length >= 120) return extract
+        return wikitextOf(base, title) ?: extract
+    }
+
     /* ---- pictures --------------------------------------------------------- */
 
     private val JUNK = listOf(
@@ -270,6 +329,7 @@ object WikiRepo {
     }
 
     private fun pageImage(base: String, title: String): Pair<String, String>? {
+        if (title.isBlank()) return null
         val o = api(
             base,
             "action=query&prop=pageimages&piprop=original|thumbnail&pithumbsize=" + THUMB +
@@ -284,6 +344,7 @@ object WikiRepo {
     }
 
     private fun embeddedImage(base: String, title: String): Pair<String, String>? {
+        if (title.isBlank()) return null
         val o = api(base, "action=query&prop=images&imlimit=40&redirects=1&titles=" + enc(title))
         val arr = firstPage(o)?.optJSONArray("images") ?: return null
         for (i in 0 until arr.length()) {
@@ -308,6 +369,13 @@ object WikiRepo {
         return if (full.isBlank()) null else Pair(thumb, full)
     }
 
+    /*
+     * V9.1: Commons, but only a file that admits whose it is.
+     *
+     * This is the search that produced a film poster for the All-Night Vigil.
+     * It now demands that the file name itself carry a word of the name we
+     * are looking for, and the caller only reaches it for a person.
+     */
     private fun commonsImage(name: String): Pair<String, String>? {
         val o = api(
             COMMONS_API,
@@ -317,6 +385,7 @@ object WikiRepo {
         for (i in 0 until arr.length()) {
             val t = arr.optJSONObject(i)?.optString("title").orEmpty()
             if (t.isBlank() || !usableFile(t)) continue
+            if (!related(t, name)) continue
             val info = fileUrls(COMMONS_API, t)
             if (info != null) return info
         }
@@ -324,38 +393,42 @@ object WikiRepo {
     }
 
     private fun findPicture(saint: Saint): Pair<String, String>? {
-        val ow = saint.owTitle
-        val wp = saint.wikiTitle
-        if (ow.isNotBlank()) {
-            pageImage(OW_API, ow)?.let { Log.i(TAG, saint.id + ": orthodoxwiki pageimage"); return it }
-            embeddedImage(OW_API, ow)?.let { Log.i(TAG, saint.id + ": orthodoxwiki file"); return it }
-        }
+        val ow = saint.owTitle.ifBlank { saint.name }
+
+        pageImage(OW_API, ow)?.let { Log.i(TAG, saint.id + ": orthodoxwiki pageimage"); return it }
+        embeddedImage(OW_API, ow)?.let { Log.i(TAG, saint.id + ": orthodoxwiki file"); return it }
+
+        val wp = wpTitleFor(saint)
         if (wp.isNotBlank()) {
             pageImage(WP_API, wp)?.let { Log.i(TAG, saint.id + ": wikipedia pageimage"); return it }
             embeddedImage(WP_API, wp)?.let { Log.i(TAG, saint.id + ": wikipedia file"); return it }
         }
-        commonsImage(saint.name)?.let { Log.i(TAG, saint.id + ": commons search"); return it }
+
+        /* A blind search of Commons is a last resort for a person and for
+           nobody else. A subject either has the picture on its own article
+           or it goes without one, which is far better than a wrong one. */
+        if (saint.isSaint) {
+            commonsImage(saint.name)?.let { Log.i(TAG, saint.id + ": commons search"); return it }
+        }
+
         Log.i(TAG, saint.id + ": no picture found (ow=" + ow + " wp=" + wp + ")")
         return null
     }
 
-    /* ---- the life --------------------------------------------------------- */
+    /* ---- the article ------------------------------------------------------ */
 
     private fun bodyFor(saint: Saint): Triple<String, Boolean, String> {
-        val ow = saint.owTitle
-        val wp = saint.wikiTitle
+        val ow = saint.owTitle.ifBlank { saint.name }
+        val fromOw = pageText(OW_API, ow)
 
-        var fromOw = ""
-        if (ow.isNotBlank()) {
-            fromOw = (extractOf(OW_API, ow) ?: "").let {
-                if (it.length < 120) wikitextOf(OW_API, ow) ?: it else it
-            }
-        }
+        /* Wikipedia is consulted when OrthodoxWiki was thin or silent, which
+           is the case for most subjects. The title is searched for if the
+           entry never carried one. */
+        var wp = saint.wikiTitle
         var fromWp = ""
-        if (wp.isNotBlank()) {
-            fromWp = (extractOf(WP_API, wp) ?: "").let {
-                if (it.length < 120) wikitextOf(WP_API, wp) ?: it else it
-            }
+        if (fromOw.length < 600) {
+            if (wp.isBlank()) wp = wpTitleFor(saint)
+            fromWp = pageText(WP_API, wp)
         }
 
         val useWp = fromOw.isBlank() || fromWp.length > (fromOw.length * 3) / 2

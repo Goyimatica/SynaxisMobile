@@ -309,7 +309,7 @@ fun SaintScreen(saintId: String, onBack: () -> Unit) {
 
                 body.isBlank() || failed -> {
                     Text(
-                        "No life has been downloaded for this saint yet. Tap the arrows above to try again, or sync everything at once from Settings.",
+                        "No life has been downloaded for this entry yet. Tap the arrows above to try again, or sync everything at once from Settings.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = c.faint,
                     )

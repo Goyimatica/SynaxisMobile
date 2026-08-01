@@ -60,7 +60,7 @@ fun SearchScreen(onOpenSaint: (String) -> Unit, onOpenSettings: () -> Unit) {
 
     val results = remember(query, tag) {
         val base = if (query.isBlank()) {
-            if (tag == null) emptyList() else SaintsRepo.filter(tag = tag)
+            if (tag == null) emptyList() else SaintsRepo.filterAll(tag = tag)
         } else {
             SaintsRepo.search(query, limit = 80)
         }
