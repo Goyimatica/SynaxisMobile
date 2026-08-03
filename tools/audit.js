@@ -178,11 +178,17 @@ console.log("  .  " + people.length + " saints with a feast to audit");
    Romania feasts Stăniloae on 4 October, Greece feasts Savvas on 7 April
    (his OrthodoxWiki article says exactly that), and Neophytos the Recluse
    is on OrthodoxWiki's own Template:January_24 (spelled "Neophytus" there,
-   which hides him from the matcher). */
+   which hides him from the matcher).  Gabriel Urgebadze is feasted by the
+   Georgian Church on 20 October (old style) = 2 November (new style) - his
+   Wikipedia footnote says "память нового святого решено праздновать 20
+   октября (2 ноября по н.ст.)" and ACROD confirms "October 20 / November
+   2" - so 10-20 is the church date and the naive check chases him 13 days
+   forward to his civil date forever. */
 const KEEP_DATE = new Set([
 	"Dumitru Staniloae",
 	"Savvas the New of Kalymnos",
 	"Neophytos the Recluse",
+	"Gabriel Urgebadze",
 ]);
 
 /* Pre-schism Ecumenical saints OrthodoxWiki files under the modern

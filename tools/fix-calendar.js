@@ -28,10 +28,12 @@ const OUT = path.join(__dirname, "..", "app", "src", "main", "assets", "saints.j
 
 /* o-title -> new feast (the church date, i.e. where the OrthodoxWiki day
    template puts the person).  Re-verified 2026-08-03 against the day
-   templates and the churches' own calendars: Cleopa (Romanian, 2 Dec new),
-   Dabovich (Serbian, 30 Nov old), Joseph the Hesychast (Greek, 16 Aug;
+   templates and the churches' own calendars:   Cleopa (Romanian, 2 Dec new),   Dabovich (Serbian, 30 Nov old), Joseph the Hesychast (Greek, 16 Aug;
    OrthodoxWiki Template:August_16), Mardarije (Serbian, 29 Nov old),
-   Anianus of Alexandria (pre-schism EO, 25 Apr - Holweck/Chalcedonian). */
+   Anianus of Alexandria (pre-schism EO, 25 Apr - Holweck/Chalcedonian),
+   and the 100,000 Martyrs of Tbilisi (Georgian Church: 13 Nov new =
+   31 Oct old; OCA lists them on 31 Oct - the stored 11-13 was the civil
+   date). */
 const MOVES = {
 	"Silouan the Athonite": "09-11",
 	"Xenia of St. Petersburg": "01-24",
@@ -60,6 +62,7 @@ const MOVES = {
 	"Joseph the Hesychast": "08-16",
 	"Mardarije of Libertyville": "11-29",
 	"Anianus of Alexandria": "04-25",
+	"100,000 Martyrs of Tbilisi": "10-31",
 };
 
 /* o-title to remove.  For duplicates where the same person is listed twice,
