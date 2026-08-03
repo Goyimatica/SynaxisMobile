@@ -54,7 +54,11 @@ const NOT_PERSON = new RegExp([
 	"cathedral", "books", "hymns", "prayers", "icons", "councils",
 	"church history", "calendar", "dictionar", "disambiguation", "lists",
 	"oriental orthodox", "coptic orthodox", "armenian apostolic",
-	"syriac orthodox", "ethiopian orthodox", "malankara"
+	"syriac orthodox", "ethiopian orthodox", "malankara",
+	/* 2026-08-02: the category that let Cyril V the Coptic Pope through -
+	   "Non-Chalcedonian Saints".  Pre-schism Ecumenical saints never carry
+	   it; post-schism foreign-church saints always do. */
+	"non-chalcedonian", "miaphysite", "tewahedo", "jacobite"
 ].join("|"), "i");
 
 /* Titles that are never a commemoration, whatever their categories say. */

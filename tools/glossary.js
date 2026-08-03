@@ -45,7 +45,20 @@ const OFFICE = /^(abbot|abbess|archbishop|bishop|metropolitan|patriarch|priest|d
  * blocking it here keeps the CI output identical to the curated index.
  */
 const TITLE_BLOCK = new Set([
-	"olga of alaska"
+	"olga of alaska",
+	/* 2026-08-02 culls: these articles exist on OrthodoxWiki and their
+	   categories look like a person, but they are not Eastern Orthodox
+	   saints - a Coptic Pope, a condemned writer, deposed or uncanonized
+	   patriarchs, a canonist, a Coptic double of an existing saint, and a
+	   movable feast.  They must never be harvested again. */
+	"cyril v (john) of alexandria",
+	"evagrius ponticus",
+	"john xi bekkos of constantinople",
+	"theodosius vi (abourjaily) of antioch",
+	"gregory ii of constantinople",
+	"matthew blastares",
+	"philopater mercurius",
+	"joseph the betrothed"
 ]);
 
 module.exports = { GLOSS, OFFICE, TITLE_BLOCK };

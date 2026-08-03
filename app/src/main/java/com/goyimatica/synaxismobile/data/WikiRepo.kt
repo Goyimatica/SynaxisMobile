@@ -45,6 +45,7 @@ data class Doc(
     val fromOrthodoxWiki: Boolean,
     val missing: Boolean,
     val at: Long,
+    val imgVer: Int = 1,
     val both: Boolean = true,
 )
 
@@ -61,6 +62,12 @@ object WikiRepo {
        the two host limits per domain. */
     private const val PARALLEL = 32
     private const val WEEK = 7L * 24L * 60L * 60L * 1000L
+
+    /* V12: the picture rules changed - icons first, buildings refused. A
+       cache written under the old rules (a church photo standing in for a
+       life) must be hunted again exactly once. Old files carry no `imgVer`,
+       so they read as 1 and are re-hunted on the next library sync. */
+    private const val IMG_VER = 2
 
     /* V10: fetched from filesDir, not cacheDir. The OS may clear cacheDir
        whenever it pleases; these lives are meant to stay on the phone. */
@@ -119,6 +126,9 @@ object WikiRepo {
                 fromOrthodoxWiki = o.optBoolean("fromOrthodoxWiki"),
                 missing = o.optBoolean("missing"),
                 at = o.optLong("at"),
+                /* Old cache files have no `imgVer` (they read as 1), so they
+                   are re-hunted once under the V12 picture rules. */
+                imgVer = o.optInt("imgVer", 1),
                 /* Old cache files have no `both` key; they must be fetched
                    once more to fill in the second source, so the default is
                    false, not true. */
@@ -147,6 +157,7 @@ object WikiRepo {
                 !d.both -> true
                 d.missing -> now - d.at > WEEK
                 d.full.length < 600 -> true
+                d.imgVer < IMG_VER -> true
                 d.image.isBlank() -> now - d.at > WEEK
                 else -> false
             }
@@ -171,6 +182,7 @@ object WikiRepo {
                 .put("fromOrthodoxWiki", doc.fromOrthodoxWiki)
                 .put("missing", doc.missing)
                 .put("at", doc.at)
+                .put("imgVer", doc.imgVer)
                 .put("both", doc.both)
             f.writeText(o.toString())
         }
@@ -401,16 +413,40 @@ object WikiRepo {
         "building", "house", "village", "city", "street", "square", "tower",
         "bell", "gate", "wall", "cemetery", "reliquary", "sarcophagus", "crypt",
         "nave", "apse", "iconostasis", "mural", "ceiling", "dome", "floor",
+        /* V12: the neighbours of a church photo - the stone around a tomb,
+           the cloister walk, the altar rail, the shrine itself. */
+        "cloister", "convent", "shrine", "sanctuary", "altar", "fresco",
+        "mosaic", "stained-glass", "stained glass", "ruin", "ruins",
+        "portico", "colonnade", "apse", "choir", "belfry", "spire",
+        "cross on the", "view of", "interior view", "exterior view",
     )
 
     private fun usableForPerson(name: String): Boolean {
         val n = name.lowercase()
         if (!usableFile(name)) return false
         if (PLACES.any { n.contains(it) }) return false
+        /* a camera-upload file name is a photo of somewhere, never a person */
+        if (Regex("(^|[^a-z])(img|dsc|pxl|wp|whatsapp)[-_]?\\d{2,}").containsMatchIn(n)) return false
         return true
     }
 
-    private fun pageImage(base: String, title: String, person: Boolean = false): Pair<String, String>? {
+    /*
+     * V13: a person's picture must be of the person.  An icon-named file or
+     * a file that carries a word of their name is the person; anything else
+     * (a landscape, a building, a crowd) is refused, whatever article it
+     * came from.  This is what killed the last of the building photos - the
+     * lead image of a saint's Wikipedia article is very often a photo of
+     * their church, and a church photo whose file name happened not to say
+     * "church" used to win.
+     */
+    private fun personPicture(name: String, fileTitle: String): Boolean {
+        val n = fileTitle.lowercase()
+        if (!usableForPerson(fileTitle)) return false
+        if (n.contains("icon")) return true
+        return related(fileTitle, name)
+    }
+
+    private fun pageImage(base: String, title: String, person: Boolean = false, name: String = ""): Pair<String, String>? {
         if (title.isBlank()) return null
         val o = api(
             base,
@@ -423,22 +459,22 @@ object WikiRepo {
         val full = original.ifBlank { thumb }
         val small = thumb.ifBlank { original }
         if (full.isBlank()) return null
-        if (person && !usableForPerson(full.substringAfterLast('/'))) return null
+        if (person && !personPicture(name, full.substringAfterLast('/'))) return null
         return Pair(small, full)
     }
 
-    private fun embeddedImage(base: String, title: String, person: Boolean = false): Pair<String, String>? {
+    private fun embeddedImage(base: String, title: String, person: Boolean = false, name: String = ""): Pair<String, String>? {
         if (title.isBlank()) return null
         val o = api(base, "action=query&prop=images&imlimit=40&redirects=1&titles=" + enc(title))
         val arr = firstPage(o)?.optJSONArray("images") ?: return null
         var best: Pair<String, String>? = null
         for (i in 0 until arr.length()) {
-            val name = arr.optJSONObject(i)?.optString("title").orEmpty()
-            if (name.isBlank() || !usableFile(name)) continue
-            if (person && !usableForPerson(name)) continue
-            val info = fileUrls(base, name) ?: continue
+            val file = arr.optJSONObject(i)?.optString("title").orEmpty()
+            if (file.isBlank() || !usableFile(file)) continue
+            if (person && !personPicture(name, file)) continue
+            val info = fileUrls(base, file) ?: continue
             /* for a person, an icon-named file wins over a plain one */
-            if (person && name.lowercase().contains("icon")) return info
+            if (person && file.lowercase().contains("icon")) return info
             if (best == null) best = info
         }
         return best
@@ -469,21 +505,36 @@ object WikiRepo {
      * of "Icon of St X" files; when one exists it is the right picture, and
      * it beats any lead image, which for a saint is all too often a photo of
      * their church or their tomb.
+     * V12: several phrasings, because "icon of X" misses "X - icon" and
+     * "Saint X (icon)". All of them still demand the file name carry the
+     * person's name and the word icon, so a fresco of a stranger never wins.
      */
     private fun iconImage(name: String): Pair<String, String>? {
         if (name.isBlank()) return null
-        val o = api(
-            COMMONS_API,
-            "action=query&list=search&srnamespace=6&srlimit=8&srsearch=" + enc("icon of " + name),
+        val queries = listOf(
+            "icon of " + name,
+            name + " icon",
+            "saint " + name + " icon",
+            name,
         )
-        val arr = o?.optJSONObject("query")?.optJSONArray("search") ?: return null
-        for (i in 0 until arr.length()) {
-            val t = arr.optJSONObject(i)?.optString("title").orEmpty()
-            if (t.isBlank() || !usableForPerson(t)) continue
-            if (!t.lowercase().contains("icon")) continue
-            if (!related(t, name)) continue
-            val info = fileUrls(COMMONS_API, t)
-            if (info != null) return info
+        for (q in queries) {
+            val o = api(
+                COMMONS_API,
+                "action=query&list=search&srnamespace=6&srlimit=10&srsearch=" + enc(q),
+            )
+            val arr = o?.optJSONObject("query")?.optJSONArray("search") ?: continue
+            for (i in 0 until arr.length()) {
+                val t = arr.optJSONObject(i)?.optString("title").orEmpty()
+                if (t.isBlank() || !usableForPerson(t)) continue
+                if (!related(t, name)) continue
+                val info = fileUrls(COMMONS_API, t)
+                if (info != null) {
+                    /* a bare name search may return a photo; only an icon
+                       named file wins from that query */
+                    if (q == name && !t.lowercase().contains("icon")) continue
+                    return info
+                }
+            }
         }
         return null
     }
@@ -514,13 +565,13 @@ object WikiRepo {
             iconImage(saint.name)?.let { return it }
         }
 
-        pageImage(OW_API, ow, person)?.let { return it }
-        embeddedImage(OW_API, ow, person)?.let { return it }
+        pageImage(OW_API, ow, person, saint.name)?.let { return it }
+        embeddedImage(OW_API, ow, person, saint.name)?.let { return it }
 
         val wp = wpTitleFor(saint)
         if (wp.isNotBlank()) {
-            pageImage(WP_API, wp, person)?.let { return it }
-            embeddedImage(WP_API, wp, person)?.let { return it }
+            pageImage(WP_API, wp, person, saint.name)?.let { return it }
+            embeddedImage(WP_API, wp, person, saint.name)?.let { return it }
         }
 
         /* A blind search of Commons is a last resort for a person and for
@@ -567,7 +618,7 @@ object WikiRepo {
         val old = cached(id)
 
         val goodText = (old?.full?.length ?: 0) >= 600
-        val goodPicture = !old?.image.isNullOrBlank()
+        val goodPicture = !old?.image.isNullOrBlank() && (old?.imgVer ?: 0) >= IMG_VER
         if (!force && old != null && goodText && goodPicture && old.both) return@withContext old
 
         val ow: String
@@ -609,6 +660,7 @@ object WikiRepo {
             fromOrthodoxWiki = !useWp,
             missing = text.isBlank(),
             at = System.currentTimeMillis(),
+            imgVer = IMG_VER,
             both = true,
         )
         save(fresh)
