@@ -79,6 +79,7 @@ const CULLS = {
 	"Catherine of Alexandria": "11-25",              // dup of catherine-of-alexandria 11-24
 	"Chinese New Martyrs": null,                     // dup of "Martyrs of China" 06-11
 	"John (Maximovitch) the Wonderworker": null,     // wrong date; real St John of Shanghai is 06-19
+	"Alexis Mechev": null,                           // dup of "Alexey Mechev of Moscow" 06-09 (OCA)
 };
 
 /* dup pairs culled by (o-title, feast) where o alone is ambiguous */
@@ -162,6 +163,8 @@ const ADDS = [
 	{ id: "victorinus-of-pettau", n: "Victorinus of Pettau", e: "Bishop and Martyr", f: "11-02", w: "Victorinus of Pettau", o: "" },
 	{ id: "nicanor-the-deacon", n: "Apostle Nicanor", e: "Deacon of the Seventy", f: "12-28", w: "Nicanor the Deacon", o: "Apostle Nicanor" },
 	{ id: "20-000-martyrs-of-nicomedia", n: "The 20,000 Martyrs of Nicomedia", e: "Martyrs under Maximian", f: "12-28", w: "Martyrs of Nicomedia", o: "" },
+	{ id: "seven-sleepers-of-ephesus", n: "Seven Sleepers of Ephesus", e: "Seven Holy Youths", f: "08-04", w: "Seven Sleepers", o: "" },
+	{ id: "arethas-of-najran", n: "Arethas of Najran", e: "Greatmartyr, with 4,000 with him", f: "10-24", w: "Arethas of Najran", o: "" },
 ];
 
 const have = new Set(data.map(function (s) { return s.id; }));

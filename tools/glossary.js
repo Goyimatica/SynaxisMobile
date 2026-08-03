@@ -58,7 +58,19 @@ const TITLE_BLOCK = new Set([
 	"gregory ii of constantinople",
 	"matthew blastares",
 	"philopater mercurius",
-	"joseph the betrothed"
+	"joseph the betrothed",
+	/* 2026-08-03: culled duplicates that the harvest kept re-adding from
+	   day templates and name mis-resolutions.  Each is the same person as
+	   an entry already in the index on its real feast date - verified
+	   against the OrthodoxWiki articles - and must never return. */
+	"amphilochios makris",                    // dup of "Amphilochios (Makris) of Patmos" 04-03
+	"justin the philosopher",                 // dup of "Justin Martyr" 06-01
+	"chinese new martyrs",                    // dup of "Martyrs of China" 06-11
+	"cosmas of aetolia",                      // feast 24 Aug (OW article); the 08-04 slot is not his
+	"john (maximovitch) the wonderworker",    // the 12-04 "John the Wonderworker" (of Polybotum) mis-resolves to him
+	"sebastian (dabovich)",                   // feast 30 Nov; the 10-24 "Martyr Sebastian" is a different man
+	"alexis mechev",                          // dup of "Alexey Mechev of Moscow" 06-09 (OCA)
+	"sophia"                                  // pre-comma name of "Sophia, the ascetic of Kleisoura" dup
 ]);
 
 module.exports = { GLOSS, OFFICE, TITLE_BLOCK };
