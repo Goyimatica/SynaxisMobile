@@ -26,14 +26,19 @@ const fs = require("fs");
 const path = require("path");
 const OUT = path.join(__dirname, "..", "app", "src", "main", "assets", "saints.json");
 
-/* o-title -> new feast.  Civil date stored; church date is 13 back. */
+/* o-title -> new feast (the church date, i.e. where the OrthodoxWiki day
+   template puts the person).  Re-verified 2026-08-03 against the day
+   templates and the churches' own calendars: Cleopa (Romanian, 2 Dec new),
+   Dabovich (Serbian, 30 Nov old), Joseph the Hesychast (Greek, 16 Aug;
+   OrthodoxWiki Template:August_16), Mardarije (Serbian, 29 Nov old),
+   Anianus of Alexandria (pre-schism EO, 25 Apr - Holweck/Chalcedonian). */
 const MOVES = {
 	"Silouan the Athonite": "09-11",
 	"Xenia of St. Petersburg": "01-24",
 	"Seraphim Rose": "08-20",
 	"Alexander Nevsky": "08-30",
 	"Basil of Ostrog": "04-29",
-	"Cleopa Ilie": "11-19",
+	"Cleopa Ilie": "12-02",
 	"Ilie Lacatusu": "07-09",
 	"Elizabeth the New Martyr": "07-05",
 	"Gabriel Urgebadze": "10-20",
@@ -41,7 +46,7 @@ const MOVES = {
 	"Justin Popovich": "06-01",
 	"Peter of Cetinje": "10-18",
 	"Sava of Serbia": "01-14",
-	"Sebastian Dabovich": "11-17",
+	"Sebastian Dabovich": "11-30",
 	"Seraphim of Vyritsa": "03-21",
 	"Seraphim Sobolev": "02-13",
 	"Royal Martyrs of Russia": "07-04",
@@ -52,6 +57,9 @@ const MOVES = {
 	"Ephraim of Katounakia": "02-14",
 	"Simeon the Myrrhstreaming": "02-13",
 	"Clement of Rome": "11-25",   // main feast Nov 25; the 01-04 slot is the Synaxis
+	"Joseph the Hesychast": "08-16",
+	"Mardarije of Libertyville": "11-29",
+	"Anianus of Alexandria": "04-25",
 };
 
 /* o-title to remove.  For duplicates where the same person is listed twice,
@@ -79,6 +87,7 @@ const CULLS_BY_FEAST = {
 	"Job": ["05-06"],                                 // dup of "Job the Long-suffering"
 	"Sophia, the ascetic of Kleisoura": ["05-06"],    // dup of "Sophia of Kleisoura"
 	"Andrei Rublev": ["07-04"],                       // dup of "Andrew Rublev"
+	"Sebastian (Dabovich)": ["10-24"],                // dup of "Sebastian Dabovich" 11-30
 };
 
 /* o-title -> { o, n } corrections (right person, wrong article title).
@@ -140,6 +149,38 @@ Object.keys(RETITLE).forEach(function (o) {
 	});
 });
 
+/* New commemorations for the church dates the harvest can never fill - the
+   names are not wikilinked in any day template and none has an OrthodoxWiki
+   article, so the harvest skips them and the dates stay empty.  Each was
+   verified on 2026-08-03 against the OrthodoxWiki day template of its date
+   and given a Wikipedia title the app can fetch a life from. */
+const ADDS = [
+	{ id: "chrysostom-relics", n: "Translation of the Relics of St John Chrysostom", e: "438 · Under Theodosius II", f: "01-27", w: "John Chrysostom", o: "John Chrysostom" },
+	{ id: "agape-irene-chionia", n: "Agape, Irene, and Chionia", e: "Virgin Martyrs of Illyria", f: "04-16", w: "Agape, Chionia, and Irene", o: "" },
+	{ id: "pambo-of-egypt", n: "Pambo of Egypt", e: "Hermit of the Desert", f: "07-18", w: "Pambo", o: "" },
+	{ id: "autonomus-of-italy", n: "Autonomus", e: "Hieromartyr, Bishop in Italy", f: "09-12", w: "Autonomus", o: "" },
+	{ id: "victorinus-of-pettau", n: "Victorinus of Pettau", e: "Bishop and Martyr", f: "11-02", w: "Victorinus of Pettau", o: "" },
+	{ id: "nicanor-the-deacon", n: "Apostle Nicanor", e: "Deacon of the Seventy", f: "12-28", w: "Nicanor the Deacon", o: "Apostle Nicanor" },
+	{ id: "20-000-martyrs-of-nicomedia", n: "The 20,000 Martyrs of Nicomedia", e: "Martyrs under Maximian", f: "12-28", w: "Martyrs of Nicomedia", o: "" },
+];
+
+const have = new Set(data.map(function (s) { return s.id; }));
+let added = 0;
+ADDS.forEach(function (a) {
+	if (have.has(a.id)) return;                        // idempotent: already there
+	const clash = data.some(function (s) {
+		return s.f === a.f && ((a.o && s.o === a.o) || (a.w && s.w === a.w));
+	});
+	if (clash) return;                                 // same commemoration already present
+	data.push({
+		id: a.id, n: a.n, e: a.e, f: a.f, fl: null, era: "", j: "",
+		w: a.w, o: a.o, b: [], c: null, note: null, pending: false, k: "saint",
+	});
+	have.add(a.id);
+	console.log("  add   " + a.id + "  " + a.n + "  @" + a.f);
+	added++;
+});
+
 data.sort(function (a, b) { return String(a.n).localeCompare(String(b.n), "en"); });
 fs.writeFileSync(OUT, JSON.stringify(data));
 
@@ -152,7 +193,8 @@ console.log("");
 console.log("  moved   " + moved);
 console.log("  culled  " + culled);
 console.log("  titled  " + retitled);
-console.log("  total   " + data.length + " (was " + data.length + " before save)");
+console.log("  added   " + added);
+console.log("  total   " + data.length);
 if (nowEmpty.length) {
 	console.log("  EMPTY DATES after culls (CI harvest will refill): " + nowEmpty.join(" "));
 }

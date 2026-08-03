@@ -89,6 +89,13 @@ const SCHISM_WIDE = new RegExp([
 function pad(n) { return n < 10 ? "0" + n : String(n); }
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+/* fold "Stăniloae" -> "staniloae" so a diacritic can never hide a saint
+   from the matcher - the 2026-08-02 run flagged Dumitru Stăniloae purely
+   because "ă" split his name in two and no day matched it. */
+function fold(s) {
+	return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 async function api(base, query, pause) {
 	const url = base + "?format=json&formatversion=2&" + query;
 	for (let attempt = 0; attempt < 3; attempt++) {
@@ -110,7 +117,7 @@ const STOP = new Set([
 ]);
 
 function sigWords(s) {
-	return s.toLowerCase()
+	return fold(s)
 		.split(/[^a-z0-9]+/)
 		.filter(function (w) { return w.length > 3 && !STOP.has(w); });
 }
@@ -118,7 +125,7 @@ function sigWords(s) {
 /* Does this day text mention this saint?  All the significant words of any
    one candidate title must be present. */
 function mentions(text, titles) {
-	const t = String(text).toLowerCase();
+	const t = fold(text);
 	for (const title of titles) {
 		const words = sigWords(title);
 		if (words.length === 0) continue;
@@ -159,9 +166,35 @@ async function main() {
 		console.error("  x  this needs Node 18 or newer");
 		process.exit(1);
 	}
-	const data = JSON.parse(fs.readFileSync(OUT, "utf8"));
-	const people = data.filter(function (s) { return s.k === "saint" && s.f; });
-	console.log("  .  " + people.length + " saints with a feast to audit");
+const data = JSON.parse(fs.readFileSync(OUT, "utf8"));
+const people = data.filter(function (s) { return s.k === "saint" && s.f; });
+console.log("  .  " + people.length + " saints with a feast to audit");
+
+/* Saints whose stored church date is verified correct even though the day
+   templates disagree.  New-calendar saints are feasted on their civil
+   repose date; OrthodoxWiki templates file them under the old-style date
+   and the naive check would chase them 13 days back forever.  Verified
+   2026-08-03 against the churches' own calendars and the saints' articles:
+   Romania feasts Stăniloae on 4 October, Greece feasts Savvas on 7 April
+   (his OrthodoxWiki article says exactly that). */
+const KEEP_DATE = new Set([
+	"Dumitru Staniloae",
+	"Savvas the New of Kalymnos",
+]);
+
+/* Pre-schism Ecumenical saints OrthodoxWiki files under the modern
+   non-Chalcedonian category by cultural continuity.  All five are genuine
+   Eastern Orthodox commemorations (Greek and Slavic calendars) - keep
+   them.  Verified 2026-08-03: Anianus's feast is 25 April (Chalcedonian,
+   Holweck), Frumentius sits on OrthodoxWiki's own Template:November_30,
+   Gregory the Enlightener and Rhipsime are EO feasts on 30 September. */
+const KEEP_FOREIGN = new Set([
+	"Anianus of Alexandria",
+	"Frumentius of Axum",
+	"Gregentios of Himyaritia",
+	"Gregory the Enlightener",
+	"Rhipsime of Armenia",
+]);
 
 	/* ---- 1. fetch the calendar text for every church date, both sources - */
 	const dayText = {};
@@ -181,6 +214,7 @@ async function main() {
 	const move = [];
 	const notFound = [];
 	people.forEach(function (s) {
+		if (KEEP_DATE.has(s.o)) return;                 // verified correct; templates disagree
 		const titles = [s.o, s.n].filter(Boolean);
 		const here = dayText[s.f] || "";
 		if (mentions(here, titles)) return;                 // right day
@@ -230,6 +264,7 @@ async function main() {
 	}
 	const flagged = [];
 	people.forEach(function (s) {
+		if (KEEP_FOREIGN.has(s.o)) return;              // pre-schism EO, kept on purpose
 		const c = cat[s.o] || [];
 		if (FOREIGN_WIDE.test(c.join(" | "))) {
 			flagged.push({ s: s, cats: c.filter(function (x) { return FOREIGN_WIDE.test(x); }) });
