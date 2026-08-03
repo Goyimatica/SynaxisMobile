@@ -176,10 +176,13 @@ console.log("  .  " + people.length + " saints with a feast to audit");
    and the naive check would chase them 13 days back forever.  Verified
    2026-08-03 against the churches' own calendars and the saints' articles:
    Romania feasts Stăniloae on 4 October, Greece feasts Savvas on 7 April
-   (his OrthodoxWiki article says exactly that). */
+   (his OrthodoxWiki article says exactly that), and Neophytos the Recluse
+   is on OrthodoxWiki's own Template:January_24 (spelled "Neophytus" there,
+   which hides him from the matcher). */
 const KEEP_DATE = new Set([
 	"Dumitru Staniloae",
 	"Savvas the New of Kalymnos",
+	"Neophytos the Recluse",
 ]);
 
 /* Pre-schism Ecumenical saints OrthodoxWiki files under the modern
