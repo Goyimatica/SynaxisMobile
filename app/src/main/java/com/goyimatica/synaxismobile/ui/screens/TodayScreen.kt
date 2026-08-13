@@ -79,7 +79,9 @@ fun TodayScreen(
     val facts = remember(day, settings.calendarStyle) {
         factsFor(day, settings.toCalStyle())
     }
-    val quote = remember(day) { QuotesRepo.forDay(day) }
+    /* V14: the quote follows the user's reckoning - the church date of the
+       civil day, which is what the saints and feasts below also follow. */
+    val quote = remember(facts.churchDate) { QuotesRepo.forDay(facts.churchDate) }
 
     var copied by remember(day) { mutableStateOf(false) }
     LaunchedEffect(copied) {

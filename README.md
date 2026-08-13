@@ -57,9 +57,13 @@ date.
 - 📚 **Two sources, one reader** — OrthodoxWiki and Wikipedia articles are
   both kept; switch between them wherever both exist.
 - 🔖 **Bookmarks, highlights & notes** — synced nowhere, stored locally.
-- 🕯 **A daily saying** — seeded by the date, so it never changes mid-day.
+- 🕯 **A daily saying for every day** — 366 sayings from the Fathers, keyed
+  to your calendar reckoning, so each day of the church year has its own.
 - ⚡ **Fast** — 120 Hz motion, cached layouts, one shared HTTP connection
-  pool, and a baseline profile.
+  pool, a baseline profile, and parallel article fetches.
+- 📲 **Background downloads** — the launch sync runs as a foreground
+  service with a progress notification, so a stream finishes even when you
+  leave the app.
 - 🔒 **Hardened** — release builds require a real signing key (never the
   public debug key), R8 is on, cleartext is refused, and downloads are
   validated before they are saved.
@@ -149,8 +153,9 @@ key**.
 
 - **Debug job** — unit tests + debug APK, uploaded as a build artifact.
 - **Release job** (on `v*` tags) — decodes the signing key from repository
-  secrets, builds a signed release APK, names it after the tag, deletes the
-  key, uploads the artifact, and publishes a GitHub release.
+  secrets, builds a signed release APK **and AAB**, names them after the
+  tag, deletes the key, uploads the artifacts, and publishes a GitHub
+  release (the AAB is what you upload to Google Play).
 
 Versioning is tag-driven: `VERSION_NAME` comes from the tag (`v1.0.1` →
 `1.0.1`) and `VERSION_CODE` from the run number.

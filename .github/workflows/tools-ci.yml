@@ -26,6 +26,8 @@ jobs:
           node --check tools/fix-calendar.js
           node --check tools/verify.js
           node --check tools/check-schism.js
+          node --check tools/check-quotes.js
+          node --check tools/check-pages.js
 
       - name: Make the report dir
         run: mkdir -p reports
@@ -53,6 +55,14 @@ jobs:
 
       - name: Scan for schismatics
         run: node tools/check-schism.js | tee reports/schism.txt
+        continue-on-error: true
+
+      - name: Check the daily quotes
+        run: node tools/check-quotes.js | tee reports/quotes.txt
+        continue-on-error: true
+
+      - name: Check every page resolves
+        run: node tools/check-pages.js | tee reports/pages.txt
         continue-on-error: true
 
       - name: Upload the report

@@ -18,12 +18,15 @@ data class Quote(
 /**
  * The daily saying.
  *
- * It has to feel unpredictable but stay the same all day - open the app at
- * dawn and at midnight and it is the same words. So the date seeds a hash
- * rather than a random number generator. Knuth's multiplicative constant
- * scatters consecutive days across the whole list, which a plain modulo of
- * the day number does not: that would walk the quotes in order, one per day,
- * and you would notice within a week.
+ * V14: the quote follows the reckoning. Today is keyed to the *church* date
+ * - the day the user's chosen calendar (Julian or Revised Julian) calls it -
+ * so the same civil day shows the quote of its church day, and the quote
+ * never changes mid-day no matter how often the app is opened.
+ *
+ * There is one quote per slot of the year, and every (month, day) pair maps
+ * to a fixed slot (1..366, February 29 included), so every day of the
+ * church year has its own saying and the same date always shows the same
+ * words.
  */
 object QuotesRepo {
 
@@ -34,6 +37,14 @@ object QuotesRepo {
 
     val isLoaded: Boolean get() = quotes.isNotEmpty()
     val count: Int get() = quotes.size
+
+    /* Days before the first of each month, counting February as always
+       29 days, so every real date - February 29 included - owns a slot. */
+    private val MONTH_PREFIX = intArrayOf(0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335)
+
+    /** 1..366 for any (month, day), stable across leap and common years. */
+    private fun slotOf(church: LocalDate): Int =
+        MONTH_PREFIX[church.monthValue - 1] + church.dayOfMonth
 
     suspend fun load(context: Context) {
         if (isLoaded) return
@@ -60,11 +71,10 @@ object QuotesRepo {
 
     fun all(): List<Quote> = quotes
 
-    fun forDay(date: LocalDate): Quote? {
+    /** The quote for a church-calendar date (the user's reckoning). */
+    fun forDay(church: LocalDate): Quote? {
         if (quotes.isEmpty()) return null
-        val ordinal = date.year * 10000L + date.monthValue * 100L + date.dayOfMonth
-        val scattered = (ordinal * 2654435761L) xor (ordinal shr 7)
-        val index = ((scattered % quotes.size).toInt() + quotes.size) % quotes.size
+        val index = (slotOf(church) - 1) % quotes.size
         return quotes[index]
     }
 

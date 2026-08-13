@@ -67,6 +67,7 @@ fun SynaxisApp() {
 
         LaunchedEffect(Unit) {
             WikiRepo.init(context)
+            SyncGate.init(context)
             Store.init(context)
             SaintsRepo.load(context)
             QuotesRepo.load(context)

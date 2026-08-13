@@ -77,6 +77,15 @@ object WikiRepo {
     private val diskLock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /* V14: how many bytes a sync has pulled, so the dialogs can say how fast
+       the network is really moving instead of leaving it to the imagination.
+       Counted in save(), reset at the top of a run. */
+    @Volatile
+    private var pulledBytes = 0L
+
+    fun resetPulled() { pulledBytes = 0L }
+    fun pulledBytes(): Long = pulledBytes
+
     /* V9.1: entry id -> the Wikipedia title we found for it, or "" if there
        is none. Held for the session so a subject is never searched twice. */
     private val resolvedWp = ConcurrentHashMap<String, String>()
@@ -155,8 +164,13 @@ object WikiRepo {
             when {
                 d == null -> true
                 !d.both -> true
+                /* A stub is not going to turn into an article overnight, and an
+                   entry with nothing on either wiki is not going to grow one
+                   tomorrow. V14: both are re-tried weekly, never on every
+                   launch - that used to put a "2 lives are missing" dialog
+                   in front of the user every single time the app opened. */
                 d.missing -> now - d.at > WEEK
-                d.full.length < 600 -> true
+                d.full.length < 600 -> now - d.at > WEEK
                 d.imgVer < IMG_VER -> true
                 d.image.isBlank() -> now - d.at > WEEK
                 else -> false
@@ -185,6 +199,7 @@ object WikiRepo {
                 .put("imgVer", doc.imgVer)
                 .put("both", doc.both)
             f.writeText(o.toString())
+            pulledBytes += f.length()
         }
     }
 
@@ -590,16 +605,19 @@ object WikiRepo {
      * Both articles, cleaned, as a pair of (orthodoxWiki, wikipedia) texts.
      * A blank side is honest: that wiki has nothing on this subject.
      */
-    private fun bodyFor(saint: Saint): Pair<String, String> {
+    /* V14: the two sources are independent, so they are fetched at the same
+       time. One saint used to cost two network round-trips end to end; it now
+       costs one, which is the difference between a sync that crawls and one
+       that uses the connection. */
+    private suspend fun bodyFor(saint: Saint): Pair<String, String> = coroutineScope {
         val ow = saint.owTitle.ifBlank { saint.name }
-        val fromOw = tidy(pageText(OW_API, ow))
-
-        var wp = saint.wikiTitle
-        var fromWp = ""
-        if (wp.isBlank()) wp = wpTitleFor(saint)
-        fromWp = tidy(pageText(WP_API, wp))
-
-        return Pair(fromOw, fromWp)
+        val fromOw = async { tidy(pageText(OW_API, ow)) }
+        val fromWp = async {
+            var wp = saint.wikiTitle
+            if (wp.isBlank()) wp = wpTitleFor(saint)
+            tidy(pageText(WP_API, wp))
+        }
+        Pair(fromOw.await(), fromWp.await())
     }
 
     /**

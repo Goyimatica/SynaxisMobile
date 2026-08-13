@@ -36,6 +36,9 @@ jobs:
       - name: Assemble debug
         run: ./gradlew assembleDebug --stacktrace
 
+      - name: Lint (Play Store gate)
+        run: ./gradlew lintDebug --stacktrace
+
       - name: Upload debug APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -78,18 +81,20 @@ jobs:
           echo "VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           echo "VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
-      - name: Assemble signed release
+      - name: Assemble signed release (APK + AAB)
         env:
           SYNAXIS_STORE_FILE: synaxis-release.jks
           SYNAXIS_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           SYNAXIS_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           SYNAXIS_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: |
+          ./gradlew assembleRelease bundleRelease --stacktrace
 
       - name: Name it after the tag
         run: |
           mkdir -p out
           cp app/build/outputs/apk/release/*.apk "out/Synaxis-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/bundle/release/*.aab "out/Synaxis-${GITHUB_REF_NAME}.aab"
           ls -l out
 
       - name: Shred the key
@@ -107,5 +112,7 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
-          files: out/*.apk
+          files: |
+            out/*.apk
+            out/*.aab
           generate_release_notes: true

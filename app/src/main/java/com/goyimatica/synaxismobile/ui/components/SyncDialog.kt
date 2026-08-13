@@ -1,5 +1,9 @@
 package com.goyimatica.synaxismobile.ui.components
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -22,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -73,6 +78,22 @@ private fun ChoiceDialog() {
     val count = SyncGate.total
     val bytes = humanBytes(SyncGate.estimateBytes)
 
+    /* V14: the stream runs as a foreground service and reports itself in the
+       status bar, which on Android 13+ needs the user's blessing first. The
+       sync starts either way; the permission only decides whether the bar
+       is visible. */
+    val context = LocalContext.current
+    val notifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    fun askNotifications() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching {
+                notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = { /* cannot be dismissed without a choice */ },
         properties = dialogProperties,
@@ -104,12 +125,18 @@ private fun ChoiceDialog() {
             }
         },
         confirmButton = {
-            TextButton(onClick = { SyncGate.chooseNow() }) {
+            TextButton(onClick = {
+                askNotifications()
+                SyncGate.chooseNow()
+            }) {
                 Text("Download now", color = c.gold)
             }
         },
         dismissButton = {
-            TextButton(onClick = { SyncGate.chooseBackground() }) {
+            TextButton(onClick = {
+                askNotifications()
+                SyncGate.chooseBackground()
+            }) {
                 Text("Stream in background", color = c.dim)
             }
         },
@@ -152,6 +179,8 @@ private fun ProgressDialog() {
                             SyncGate.total.toString() + " fetched. They are yours offline now."
                         else ->
                             SyncGate.progressText +
+                                (if (SyncGate.speedText.isNotBlank())
+                                    " \u00B7 " + SyncGate.speedText else "") +
                                 (if (SyncGate.etaSeconds > 0)
                                     " \u00B7 " + etaText(SyncGate.etaSeconds) else "")
                     },
@@ -181,7 +210,7 @@ private fun ProgressDialog() {
                 if (!finished) {
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        text = "At full speed. Force-stop the app to stop it.",
+                        text = "At full speed, even in the background. Force-stop the app to stop it.",
                         style = MaterialTheme.typography.bodySmall,
                         color = c.faint,
                         textAlign = TextAlign.Center,
@@ -237,6 +266,7 @@ private fun StreamingPill() {
             Spacer(Modifier.width(10.dp))
             Text(
                 text = SyncGate.progressText +
+                    (if (SyncGate.speedText.isNotBlank()) " \u00B7 " + SyncGate.speedText else "") +
                     (if (SyncGate.etaSeconds > 0) " \u00B7 " + etaText(SyncGate.etaSeconds) else "") +
                     " \u00B7 force-stop to stop",
                 style = MaterialTheme.typography.labelMedium,
