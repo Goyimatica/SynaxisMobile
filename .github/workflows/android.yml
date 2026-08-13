@@ -39,12 +39,10 @@ jobs:
       - name: Lint (Play Store gate)
         run: ./gradlew lintDebug --stacktrace
 
-      - name: Upload debug APK
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: synaxis-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 30
+      # No artifact upload here on purpose: every 27 MB debug APK we stored
+      # in Actions burned the artifact storage quota in a matter of weeks.
+      # Releases carry the signed APK and AAB on the GitHub Release page,
+      # where they belong; nothing goes to Actions storage.
 
   release:
     name: Signed release APK
@@ -102,12 +100,9 @@ jobs:
         run: |
           shred -u synaxis-release.jks 2>/dev/null || rm -f synaxis-release.jks
 
-      - name: Upload release APK
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: synaxis-release-apk
-          path: out/*.apk
-          retention-days: 90
+      # No Actions artifact upload here either - softprops publishes the
+      # signed APK and AAB straight to the GitHub Release, keeping Actions
+      # storage free for the data pipeline reports.
 
       - name: Publish the release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
