@@ -1,15 +1,19 @@
 name: Data tools
 
 on:
-  # Temporary pipeline workflow - run it by hand (gh workflow run), pull the
-  # artifacts, then commit the harvested index.  Not tied to push so it can
-  # never race the Android build.
+  # Data pipeline - run it by hand (gh workflow run), it re-harvests the
+  # calendar, re-runs every check, and commits the verified saints.json
+  # straight to the repo when every gate passes.  No Actions artifacts:
+  # the storage quota kept eating the uploads, and the commit is the
+  # artifact.  The push to main then triggers the Android build.
   workflow_dispatch:
 
 jobs:
   pipeline:
     name: Harvest + verify x2 + audit + schism
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
@@ -42,41 +46,64 @@ jobs:
         run: node tools/fill-gaps.js | tee reports/fill.txt
 
       - name: Verify (first run)
-        run: node tools/verify.js | tee reports/verify1.txt
         continue-on-error: true
+        run: |
+          node tools/verify.js | tee reports/verify1.txt
+          echo ${PIPESTATUS[0]} > reports/verify1.code
 
       - name: Verify (second run)
-        run: node tools/verify.js | tee reports/verify2.txt
         continue-on-error: true
+        run: |
+          node tools/verify.js | tee reports/verify2.txt
+          echo ${PIPESTATUS[0]} > reports/verify2.code
 
       - name: Audit against the calendars
-        run: node tools/audit.js | tee reports/audit.txt
         continue-on-error: true
+        run: |
+          node tools/audit.js | tee reports/audit.txt
+          echo ${PIPESTATUS[0]} > reports/audit.code
 
       - name: Scan for schismatics
-        run: node tools/check-schism.js | tee reports/schism.txt
         continue-on-error: true
+        run: |
+          node tools/check-schism.js | tee reports/schism.txt
+          echo ${PIPESTATUS[0]} > reports/schism.code
 
       - name: Check the daily quotes
-        run: node tools/check-quotes.js | tee reports/quotes.txt
         continue-on-error: true
+        run: |
+          node tools/check-quotes.js | tee reports/quotes.txt
+          echo ${PIPESTATUS[0]} > reports/quotes.code
 
       - name: Check every page resolves
-        run: node tools/check-pages.js | tee reports/pages.txt
         continue-on-error: true
+        run: |
+          node tools/check-pages.js | tee reports/pages.txt
+          echo ${PIPESTATUS[0]} > reports/pages.code
 
-      - name: Upload the report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - name: Show the reports
         if: always()
-        with:
-          name: pipeline-report
-          path: reports/*.txt
-          retention-days: 14
+        run: |
+          for f in reports/*.txt; do
+            echo "===== $(basename "$f") ====="
+            tail -12 "$f"
+            echo ""
+          done
 
-      - name: Upload the harvested index
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: saints-json
-          path: app/src/main/assets/saints.json
-          retention-days: 14
+      - name: Commit the verified index
+        run: |
+          set -e
+          for f in verify1 verify2 audit schism quotes pages; do
+            code=$(cat "reports/$f.code")
+            echo "gate $f: exit $code"
+            [ "$code" = "0" ] || { echo "!! $f failed - refusing to commit"; exit 1; }
+          done
+          git config user.name "synaxis-ci"
+          git config user.email "actions@github.com"
+          git add app/src/main/assets/saints.json
+          if git diff --cached --quiet; then
+            echo "saints.json unchanged - nothing to commit"
+          else
+            git commit -m "data: refresh the verified calendar index (pipeline)"
+            git push origin main
+          fi
